@@ -3,13 +3,11 @@
 # Install Guide
 
 ### Pycharm:
-Step 1: Create New Project
-Step 2: From the top menu, click on the VCS dropdown.  
-Step 3: From VCS Dropdown Select "Get From Version Control"  
-Step 4: Paste Repo URL  
-Step 5: Open Terminal  
-Step 6: Run pip install -r requirements.txt  
-Step 7: Open warehouse_visualizer.py and run it
+Step 1: Get From VCS 
+Step 2: Paste Repo URL  
+Step 3: Open Terminal  
+Step 4: Run pip install -r requirements.txt  
+Step 5: Open warehouse_visualizer.py and run it
 
 
 ## How To Visualize Algorithms
