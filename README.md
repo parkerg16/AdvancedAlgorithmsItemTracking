@@ -3,7 +3,7 @@
 # Install Guide
 
 ### Pycharm:
-Step 1: Get From VCS 
+Step 1: Get From VCS   
 Step 2: Paste Repo URL  
 Step 3: Open Terminal  
 Step 4: Run pip install -r requirements.txt  
@@ -11,7 +11,7 @@ Step 5: Open warehouse_visualizer.py and run it
 
 
 ## How To Visualize Algorithms
-## Visualizer Color Key
+### Visualizer Color Key
 
 | Node Type           | Color      |
 |---------------------|------------|
