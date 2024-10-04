@@ -11,15 +11,16 @@ Step 5: Open warehouse_visualizer.py and run it
 
 
 ## How To Visualize Algorithms
-### Visualizer Color Key:
-Start Node: Green  
-End Node: Red  
-Barrier Node: Yellow    
-Vertical Aisle: Light Blue  
-Horizontal Aisle: Purple   
+## Visualizer Color Key:
 
-Nodes Searched: Green  
-Final Path: Dark Blue
+<p>Start Node: Green <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 255, 0); margin-left:5px;"></span></p>
+<p>End Node: Red <span style="display:inline-block; width:12px; height:12px; background-color:rgb(255, 0, 0); margin-left:5px;"></span></p>
+<p>Barrier Node: Yellow <span style="display:inline-block; width:12px; height:12px; background-color:rgb(255, 255, 0); margin-left:5px;"></span></p>
+<p>Vertical Aisle: Light Blue <span style="display:inline-block; width:12px; height:12px; background-color:rgb(150, 150, 250); margin-left:5px;"></span></p>
+<p>Horizontal Aisle: Purple <span style="display:inline-block; width:12px; height:12px; background-color:rgb(150, 0, 250); margin-left:5px;"></span></p>
+<p>Nodes Searched: Green <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 255, 0); margin-left:5px;"></span></p>
+<p>Final Path: Blue <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 0, 255); margin-left:5px;"></span></p>
+
 
 
 
