@@ -11,16 +11,17 @@ Step 5: Open warehouse_visualizer.py and run it
 
 
 ## How To Visualize Algorithms
-## Visualizer Color Key:
+## Visualizer Color Key
 
-<p>Start Node: Green <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 255, 0); margin-left:5px;"></span></p>
-<p>End Node: Red <span style="display:inline-block; width:12px; height:12px; background-color:rgb(255, 0, 0); margin-left:5px;"></span></p>
-<p>Barrier Node: Yellow <span style="display:inline-block; width:12px; height:12px; background-color:rgb(255, 255, 0); margin-left:5px;"></span></p>
-<p>Vertical Aisle: Light Blue <span style="display:inline-block; width:12px; height:12px; background-color:rgb(150, 150, 250); margin-left:5px;"></span></p>
-<p>Horizontal Aisle: Purple <span style="display:inline-block; width:12px; height:12px; background-color:rgb(150, 0, 250); margin-left:5px;"></span></p>
-<p>Nodes Searched: Green <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 255, 0); margin-left:5px;"></span></p>
-<p>Final Path: Blue <span style="display:inline-block; width:12px; height:12px; background-color:rgb(0, 0, 255); margin-left:5px;"></span></p>
-
+| Node Type           | Color      |
+|---------------------|------------|
+| Start Node          | ![#00ff00](https://via.placeholder.com/12/00ff00/000000?text=+) Green |
+| End Node            | ![#ff0000](https://via.placeholder.com/12/ff0000/000000?text=+) Red   |
+| Barrier Node        | ![#ffff00](https://via.placeholder.com/12/ffff00/000000?text=+) Yellow|
+| Vertical Aisle      | ![#9696fa](https://via.placeholder.com/12/9696fa/000000?text=+) Light Blue |
+| Horizontal Aisle    | ![#9600fa](https://via.placeholder.com/12/9600fa/000000?text=+) Purple |
+| Nodes Searched      | ![#00ff00](https://via.placeholder.com/12/00ff00/000000?text=+) Green |
+| Final Path          | ![#0000ff](https://via.placeholder.com/12/0000ff/000000?text=+) Blue |
 
 
 
