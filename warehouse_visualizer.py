@@ -86,11 +86,10 @@ class Node(QGraphicsRectItem):
             self.set_as_barrier()
 
     def set_as_barrier(self):
-        """Mark the node as a barrier (yellow), unless it is an aisle."""
-        if not self.is_aisle:  # Aisles stay their original color but act as barriers
+        """Mark the node as a barrier (yellow), unless it is an aisle or start/end node."""
+        if not self.is_aisle and not self.is_start and not self.is_end:
             self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
-        self.is_obstacle = True
-
+            self.is_obstacle = True
     def set_visited(self):
         self.setBrush(QBrush(QColor(0, 255, 0)))  # Green when visited
 
