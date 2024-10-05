@@ -102,21 +102,26 @@ class Node(QGraphicsRectItem):
             if not self.is_aisle:
                 self.setBrush(QBrush(QColor(255, 255, 255)))  # White for reset
             else:
-                # Reset to the original color based on aisle orientation
-                if self.parent_window.orientation_type == 'vertical':
-                    color = QColor(150, 150, 250)  # Light blue
+                # Check if orientation_type exists, use a default if not
+                if hasattr(self.parent_window, 'orientation_type'):
+                    if self.parent_window.orientation_type == 'vertical':
+                        color = QColor(150, 150, 250)  # Light blue
+                    else:
+                        color = QColor(150, 0, 250)  # Purple
                 else:
-                    color = QColor(150, 0, 250)  # Purple
+                    color = QColor(150, 150, 250)  # Default color if orientation_type is not set
                 self.setBrush(QBrush(color))
 
     def set_as_start(self):
         """Mark the node as the start (green)."""
         self.is_start = True
+        self.is_obstacle = False  # Start node should not be an obstacle
         self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
 
     def set_as_end(self):
         """Mark the node as the end (red)."""
         self.is_end = True
+        self.is_obstacle = False  # End node should not be an obstacle
         self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
 
     def set_as_aisle(self, color=None):
@@ -125,12 +130,9 @@ class Node(QGraphicsRectItem):
             color = QColor(150, 150, 250)  # Default light blue for vertical aisles
         self.setBrush(QBrush(color))
         self.is_aisle = True
-        self.is_obstacle = True  # Aisles are obstacles
-        # Store the orientation type for reset
-        if color == QColor(150, 150, 250):
-            self.parent_window.orientation_type = 'vertical'
-        else:
-            self.parent_window.orientation_type = 'horizontal'
+        # Aisles are obstacles unless they are start or end nodes
+        if not self.is_start and not self.is_end:
+            self.is_obstacle = True
 
 
 class WarehouseVisualizer(QMainWindow):
@@ -147,7 +149,10 @@ class WarehouseVisualizer(QMainWindow):
         self.grid = []
         self.spacing = 1  # Default spacing between aisles (hallway size)
         self.current_mode = None  # Track mode for start, end, or barrier selection
+        self.start_node = None
+        self.end_node = None
 
+        self.orientation_type = 'vertical'  # Default value, can be updated later
         # Directory to store scenarios
         self.scenario_dir = "scenarios"
         if not os.path.exists(self.scenario_dir):
@@ -471,19 +476,57 @@ class WarehouseVisualizer(QMainWindow):
 
     def set_start_node(self, node):
         """Set the selected node as the start node."""
-        if hasattr(self, 'start_node') and self.start_node:
-            self.start_node.is_start = False  # Reset the previous start node
+        # Prevent setting the same node as both start and end
+        if self.end_node == node:
+            return
+
+        # Reset the previous start node if it exists
+        if self.start_node:
+            self.start_node.is_start = False
             self.start_node.reset()
+
+        # Set the new start node
         self.start_node = node
         self.start_node.set_as_start()
 
     def set_end_node(self, node):
         """Set the selected node as the end node."""
-        if hasattr(self, 'end_node') and self.end_node:
-            self.end_node.is_end = False  # Reset the previous end node
+        # Prevent setting the same node as both start and end
+        if self.start_node == node:
+            return
+
+        # Reset the previous end node if it exists
+        if self.end_node:
+            self.end_node.is_end = False
             self.end_node.reset()
+
+        # Set the new end node
         self.end_node = node
         self.end_node.set_as_end()
+
+    def set_as_start(self):
+        """Mark the node as the start (green)."""
+        if self.parent_window.end_node == self:
+            return  # Prevent the same node from being both start and end
+        if self.parent_window.start_node:
+            self.parent_window.start_node.is_start = False
+            self.parent_window.start_node.reset()
+        self.is_start = True
+        self.is_obstacle = False
+        self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+        self.parent_window.start_node = self
+
+    def set_as_end(self):
+        """Mark the node as the end (red)."""
+        if self.parent_window.start_node == self:
+            return  # Prevent the same node from being both start and end
+        if self.parent_window.end_node:
+            self.parent_window.end_node.is_end = False
+            self.parent_window.end_node.reset()
+        self.is_end = True
+        self.is_obstacle = False
+        self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+        self.parent_window.end_node = self
 
     def handle_search(self):
         """Handle search between start and end nodes."""
@@ -640,6 +683,9 @@ class WarehouseVisualizer(QMainWindow):
         """Check if position is an obstacle."""
         if not self.is_valid_position(x, y):
             return True
+        # Allow aisles if they are set as the target
+        if self.grid[y][x].is_aisle and self.grid[y][x] == self.end_node:
+            return False
         return self.grid[y][x].is_obstacle
 
     def is_traversable(self, x, y):
@@ -740,14 +786,11 @@ class WarehouseVisualizer(QMainWindow):
 
         # Custom heuristic: Aisle-Aware Heuristic
         elif selected_distance == "Aisle-Aware Heuristic":
-            # Base heuristic can be Manhattan or Euclidean, let's use Manhattan
             base_heuristic = abs(x1 - x2) + abs(y1 - y2)
-
-            # Add a penalty if the node is near an aisle
             penalty = 0
-            if self.is_near_aisle(node):
+            # Only add penalty if the current node is near an aisle but not if the target is on the aisle
+            if self.is_near_aisle(node) and node != goal:
                 penalty = 10  # Example penalty value, you can adjust this
-
             return base_heuristic + penalty
 
         # Default fallback to Manhattan distance if no valid heuristic is selected
@@ -760,7 +803,9 @@ class WarehouseVisualizer(QMainWindow):
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nx, ny = x + dx, y + dy
             if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                if not self.grid[ny][nx].is_obstacle:
+                neighbor_node = self.grid[ny][nx]
+                # Allow traversal if it's not an obstacle or it's the start/end node
+                if not neighbor_node.is_obstacle or neighbor_node.is_start or neighbor_node.is_end:
                     neighbors.append((nx, ny))
         return neighbors
 
