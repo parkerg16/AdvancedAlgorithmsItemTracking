@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont
 import os
 import json
+import time  # Import time module for benchmarking
 
 
 def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=True, filename="warehouse_layout.csv"):
@@ -90,6 +91,7 @@ class Node(QGraphicsRectItem):
         if not self.is_aisle and not self.is_start and not self.is_end:
             self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
             self.is_obstacle = True
+
     def set_visited(self):
         self.setBrush(QBrush(QColor(0, 255, 0)))  # Green when visited
 
@@ -130,9 +132,7 @@ class Node(QGraphicsRectItem):
             color = QColor(150, 150, 250)  # Default light blue for vertical aisles
         self.setBrush(QBrush(color))
         self.is_aisle = True
-        # Aisles are obstacles unless they are start or end nodes
-        if not self.is_start and not self.is_end:
-            self.is_obstacle = True
+        self.is_obstacle = False  # Aisles are traversable
 
 
 class WarehouseVisualizer(QMainWindow):
@@ -166,8 +166,7 @@ class WarehouseVisualizer(QMainWindow):
         # Dropdown to select the algorithm
         self.algorithm_dropdown = QComboBox(self)
         self.algorithm_dropdown.addItems(
-            ["Manhattan Distance", "Euclidean Distance", "Modified Euclidean (1.2x Y Priority)",
-             "Aisle-Aware Heuristic", "BFS", "DFS", "A* with Branch Pruning", "Jump Point Search"])
+            ["Manhattan Distance", "Euclidean Distance", "Modified Euclidean (1.2x Y Priority)"])
 
         # Dropdown to select the warehouse layout
         self.layout_dropdown = QComboBox(self)
@@ -175,7 +174,7 @@ class WarehouseVisualizer(QMainWindow):
 
         # Spin boxes to adjust the number of aisles and shelves
         self.aisle_spinbox = QSpinBox(self)
-        self.aisle_spinbox.setRange(1, 20)
+        self.aisle_spinbox.setRange(1, 50)
         self.aisle_spinbox.setValue(self.num_aisles)
         self.aisle_spinbox.valueChanged.connect(self.update_num_aisles)
 
@@ -218,6 +217,10 @@ class WarehouseVisualizer(QMainWindow):
         # Counter label for searched nodes
         self.counter_label = QLabel("Nodes Searched: 0", self)
 
+        # Benchmark button
+        self.benchmark_button = QPushButton("Benchmark Algorithms", self)
+        self.benchmark_button.clicked.connect(self.benchmark_algorithms)
+
         # Layout setup
         layout = QVBoxLayout()
         layout.addWidget(self.view)
@@ -241,6 +244,15 @@ class WarehouseVisualizer(QMainWindow):
         layout.addWidget(self.load_dropdown)
         layout.addWidget(self.clear_button)
         layout.addWidget(self.counter_label)
+
+        # Dropdown to select an item as the end node
+        self.item_dropdown = QComboBox(self)
+        self.item_dropdown.addItem("Select Item")  # Default placeholder
+        self.item_dropdown.currentIndexChanged.connect(
+            self.set_end_node_from_dropdown)  # Connect the dropdown selection to a method
+        layout.addWidget(QLabel("Select Item as End Node:", self))
+        layout.addWidget(self.item_dropdown)
+
         # Add zoom buttons
         self.zoom_in_button = QPushButton("Zoom In", self)
         self.zoom_in_button.clicked.connect(self.zoom_in)
@@ -249,6 +261,8 @@ class WarehouseVisualizer(QMainWindow):
         self.zoom_out_button = QPushButton("Zoom Out", self)
         self.zoom_out_button.clicked.connect(self.zoom_out)
         layout.addWidget(self.zoom_out_button)
+
+        layout.addWidget(self.benchmark_button)  # Add benchmark button to the layout
 
         container = QWidget()
         container.setLayout(layout)
@@ -358,6 +372,13 @@ class WarehouseVisualizer(QMainWindow):
             save_to_csv=False
         )
 
+        # Clear the item dropdown and populate it with new items
+        self.item_dropdown.blockSignals(True)  # Block signals while populating the dropdown
+        self.item_dropdown.clear()  # Clear old items
+        self.item_dropdown.addItem("Select Item")  # Add default placeholder
+
+        self.item_nodes = []  # Initialize item_nodes list
+
         aisles = warehouse_data['Aisle_Number'].nunique()
         aisle_positions = []
 
@@ -402,7 +423,7 @@ class WarehouseVisualizer(QMainWindow):
 
         # Update grid size
         self.grid_size = max(int(max_x), int(max_y)) + 2  # Add buffer
-        self.init_grid()  # Reinitialize the grid with new size
+        self.init_grid()  # Reinitialize the grid with the new size
 
         for i, row in warehouse_data.iterrows():
             aisle_num = int(row['Aisle_Number'].split('_')[1])  # Extract aisle number
@@ -431,6 +452,21 @@ class WarehouseVisualizer(QMainWindow):
 
             # Set the node as aisle with appropriate color
             self.grid[y][x].set_as_aisle(aisle_color)
+            # Set the node's name to include aisle, shelf, and location
+            self.grid[y][x].name = f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"
+
+            # Add the item to the dropdown if not empty
+            if item != "Empty":
+                self.item_dropdown.addItem(f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})")
+
+                # Store the item node for benchmarking
+                node_info = {
+                    'node': self.grid[y][x],
+                    'item': item,
+                    'x': x,
+                    'y': y
+                }
+                self.item_nodes.append(node_info)
 
             # Define the item number
             item_number = item.split('_')[-1] if item != "Empty" else "Empty"
@@ -456,11 +492,17 @@ class WarehouseVisualizer(QMainWindow):
             elif shelf_loc == 'C':
                 label.setPos(node_x + padding, node_y + self.node_size / 2 + padding)  # Bottom-left
             elif shelf_loc == 'D':
-                label.setPos(node_x + self.node_size / 2 + padding, node_y + self.node_size / 2 + padding)  # Bottom-right
+                label.setPos(node_x + self.node_size / 2 + padding,
+                             node_y + self.node_size / 2 + padding)  # Bottom-right
 
             self.scene.addItem(label)
 
-        self.adjust_zoom()  # Adjust the zoom level
+        # Re-enable signals now that dropdown is populated
+        self.item_dropdown.blockSignals(False)
+
+        # Adjust the zoom to fit the new layout
+        self.adjust_zoom()
+        print(f"Item nodes available: {len(self.item_nodes)}")
 
     def set_mode_start(self):
         """Set mode to start node selection."""
@@ -528,6 +570,93 @@ class WarehouseVisualizer(QMainWindow):
         self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
         self.parent_window.end_node = self
 
+    def set_end_node_from_dropdown(self):
+        """Set the end node based on the item selected from the dropdown."""
+        selected_item = self.item_dropdown.currentText()
+        if selected_item == "Select Item":
+            return  # Do nothing if placeholder is selected
+
+        # Extract item details from the dropdown text
+        try:
+            # Parsing text like: "Item_1234 (Aisle 1, Shelf 2, Location A)"
+            item_part, location_part = selected_item.split(' (')
+            item_name = item_part.strip()
+            location_part = location_part.rstrip(')')
+            # location_part is now like "Aisle 1, Shelf 2, Location A"
+            location_items = location_part.split(', ')
+            aisle_num = int(location_items[0].split(' ')[1])
+            shelf_num = int(location_items[1].split(' ')[1])
+            shelf_loc = location_items[2].split(' ')[1]
+
+            # Determine orientation
+            orientation = self.layout_dropdown.currentText()
+            if orientation == "Vertical Aisles":
+                orientation_type = 'vertical'
+            elif orientation == "Horizontal Aisles":
+                orientation_type = 'horizontal'
+            elif orientation == "Mixed Aisles":
+                orientation_type = 'mixed'
+            else:
+                orientation_type = 'vertical'  # Default to vertical
+
+            # Reconstruct aisle positions as in generate_warehouse_layout
+            aisle_positions = []
+            vertical_positions = set()
+            horizontal_positions = set()
+
+            if orientation_type == 'vertical':
+                for aisle_idx in range(1, self.num_aisles + 1):
+                    x_pos = 2 + (aisle_idx - 1) * (self.spacing + 1)
+                    vertical_positions.add(x_pos)
+                    aisle_positions.append(('vertical', x_pos))
+            elif orientation_type == 'horizontal':
+                for aisle_idx in range(1, self.num_aisles + 1):
+                    y_pos = 2 + (aisle_idx - 1) * (self.spacing + 1)
+                    horizontal_positions.add(y_pos)
+                    aisle_positions.append(('horizontal', y_pos))
+            elif orientation_type == 'mixed':
+                num_vertical_aisles = (self.num_aisles + 1) // 2
+                num_horizontal_aisles = self.num_aisles // 2
+
+                for i in range(num_vertical_aisles):
+                    x_pos = 2 + i * (self.spacing + 2)
+                    vertical_positions.add(x_pos)
+                    aisle_positions.append(('vertical', x_pos))
+
+                for i in range(num_horizontal_aisles):
+                    y_pos = 2 + i * (self.spacing + 2)
+                    while y_pos in vertical_positions or y_pos + 1 in vertical_positions:
+                        y_pos += 1
+                    horizontal_positions.add(y_pos)
+                    aisle_positions.append(('horizontal', y_pos))
+
+            # Now, get the aisle position for the given aisle_num
+            if aisle_num - 1 >= len(aisle_positions):
+                print(f"Aisle number {aisle_num} exceeds available positions.")
+                return
+
+            orientation_type_aisle, pos = aisle_positions[aisle_num - 1]
+
+            if orientation_type_aisle == 'vertical':
+                x = pos
+                y = 2 + (shelf_num - 1)
+            else:
+                x = 2 + (shelf_num - 1)
+                y = pos
+
+            # Ensure x and y are within grid bounds
+            if x >= self.grid_size or y >= self.grid_size:
+                print("Calculated position is out of bounds.")
+                return
+
+            node = self.grid[y][x]
+
+            # Now, set the end node
+            self.set_end_node(node)
+
+        except (IndexError, ValueError) as e:
+            print(f"Error parsing selected item: {e}")
+
     def handle_search(self):
         """Handle search between start and end nodes."""
         # Check if start and end nodes are set
@@ -551,15 +680,13 @@ class WarehouseVisualizer(QMainWindow):
         selected_algorithm = self.algorithm_dropdown.currentText()
 
         if selected_algorithm == "Jump Point Search":
-            path = self.run_jps(start, end)
+            path, nodes_searched = self.run_jps(start, end, visualize=True)
         elif selected_algorithm == "BFS":
-            path = self.bfs(start, end)
+            path, nodes_searched = self.bfs(start, end, visualize=True)
         elif selected_algorithm == "DFS":
-            path = self.dfs(start, end)
-        elif selected_algorithm == "A* with Branch Pruning":
-            path = self.run_astar_with_pruning(start, end)
+            path, nodes_searched = self.dfs(start, end, visualize=True)
         else:
-            path = self.run_astar(start, end)
+            path, nodes_searched = self.run_astar(start, end, visualize=True)
 
         if path:
             self.search_path = path
@@ -567,7 +694,42 @@ class WarehouseVisualizer(QMainWindow):
         else:
             self.counter_label.setText("No path found.")
 
-    def run_astar(self, start, end):
+    def run_dijkstra(self, start, end, visualize=True):
+        """Runs Dijkstra's algorithm (A* without a heuristic) to find the shortest path."""
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        came_from = {}
+        g_score = {start: 0}
+        self.nodes_searched = 0  # Reset node search count
+
+        while open_set:
+            _, current = heapq.heappop(open_set)
+
+            if current == end:
+                # Return path and nodes_searched
+                path = self.reconstruct_path(came_from, current)
+                return path, self.nodes_searched
+
+            # Mark the node as visited visually and count it
+            self.nodes_searched += 1
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()  # Update the UI in real-time
+
+            for neighbor in self.get_neighbors(current):
+                tentative_g_score = g_score[current] + 1
+
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    heapq.heappush(open_set, (g_score[neighbor], neighbor))
+
+        # No path found
+        return None, self.nodes_searched
+
+    def run_astar(self, start, end, visualize=True):
         """Runs the A* algorithm to find the path between start and end nodes."""
         open_set = []
         heapq.heappush(open_set, (0, start))
@@ -580,14 +742,17 @@ class WarehouseVisualizer(QMainWindow):
             _, current = heapq.heappop(open_set)
 
             if current == end:
-                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                return self.reconstruct_path(came_from, current)
+                # Return path and nodes_searched
+                path = self.reconstruct_path(came_from, current)
+                return path, self.nodes_searched
 
             # Mark the node as visited visually and count it
-            self.grid[current[1]][current[0]].set_visited()
             self.nodes_searched += 1
-            self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-            QApplication.processEvents()  # Update the UI in real-time
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()  # Update the UI in real-time
 
             for neighbor in self.get_neighbors(current):
                 tentative_g_score = g_score[current] + 1
@@ -598,10 +763,10 @@ class WarehouseVisualizer(QMainWindow):
                     f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end)
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-        self.counter_label.setText("No path found.")
-        return None  # If no path found, return None
+        # No path found
+        return None, self.nodes_searched
 
-    def run_jps(self, start, end):
+    def run_jps(self, start, end, visualize=True):
         """Runs the Jump Point Search algorithm."""
         self.start_pos = start
         self.end_pos = end
@@ -615,12 +780,15 @@ class WarehouseVisualizer(QMainWindow):
             _, current = heapq.heappop(open_set)
 
             if current == end:
-                return self.reconstruct_path(came_from, current)
+                path = self.reconstruct_path(came_from, current)
+                return path, self.nodes_searched
 
-            self.grid[current[1]][current[0]].set_visited()
             self.nodes_searched += 1
-            self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-            QApplication.processEvents()
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()
 
             neighbors = self.identify_successors(current)
 
@@ -633,8 +801,7 @@ class WarehouseVisualizer(QMainWindow):
                     f_score = tentative_g_score + self.heuristic(neighbor, end)
                     heapq.heappush(open_set, (f_score, neighbor))
 
-        self.counter_label.setText("No path found.")
-        return None
+        return None, self.nodes_searched  # No path found
 
     def identify_successors(self, node):
         """Identify successors in Jump Point Search."""
@@ -680,17 +847,23 @@ class WarehouseVisualizer(QMainWindow):
         return 0 <= x < self.grid_size and 0 <= y < self.grid_size
 
     def is_obstacle(self, x, y):
-        """Check if position is an obstacle."""
+        """Check if the node is an obstacle, and ensure aisles are non-traversable except the end node."""
         if not self.is_valid_position(x, y):
             return True
-        # Allow aisles if they are set as the target
-        if self.grid[y][x].is_aisle and self.grid[y][x] == self.end_node:
-            return False
+        # If it's an aisle and not the end node, treat it as an obstacle
+        if self.grid[y][x].is_aisle and self.grid[y][x] != self.end_node:
+            return True
         return self.grid[y][x].is_obstacle
 
     def is_traversable(self, x, y):
-        """Check if the position is within bounds and not an obstacle."""
-        return self.is_valid_position(x, y) and not self.is_obstacle(x, y)
+        """Check if the node is traversable (not an obstacle or it's the start/end node)."""
+        # Check if the node is valid and not an obstacle
+        if not self.is_valid_position(x, y):
+            return False
+        # Allow aisles to be traversable only if they are the end node
+        if self.grid[y][x].is_aisle and self.grid[y][x] != self.end_node:
+            return False
+        return not self.is_obstacle(x, y)
 
     def distance(self, node_a, node_b):
         """Calculate distance between two nodes."""
@@ -709,7 +882,7 @@ class WarehouseVisualizer(QMainWindow):
                     return True
         return False
 
-    def bfs(self, start, end):
+    def bfs(self, start, end, visualize=True):
         """Breadth-First Search algorithm to find the shortest path."""
         queue = [(start, [])]  # Queue of tuples (node, path)
         visited = set()
@@ -722,23 +895,25 @@ class WarehouseVisualizer(QMainWindow):
             visited.add(current)
 
             # Mark the node as visited visually and count it
-            self.grid[current[1]][current[0]].set_visited()
             self.nodes_searched += 1
-            self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-            QApplication.processEvents()  # Update the UI in real-time
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()  # Update the UI in real-time
 
             path = path + [current]
 
             if current == end:
-                return path
+                return path, self.nodes_searched
 
             for neighbor in self.get_neighbors(current):
                 if neighbor not in visited:
                     queue.append((neighbor, path))
 
-        return None  # No path found
+        return None, self.nodes_searched  # No path found
 
-    def dfs(self, start, end):
+    def dfs(self, start, end, visualize=True):
         """Depth-First Search algorithm to find the path."""
         stack = [(start, [])]  # Stack of tuples (node, path)
         visited = set()
@@ -751,21 +926,23 @@ class WarehouseVisualizer(QMainWindow):
             visited.add(current)
 
             # Mark the node as visited visually and count it
-            self.grid[current[1]][current[0]].set_visited()
             self.nodes_searched += 1
-            self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-            QApplication.processEvents()  # Update the UI in real-time
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()  # Update the UI in real-time
 
             path = path + [current]
 
             if current == end:
-                return path
+                return path, self.nodes_searched
 
             for neighbor in self.get_neighbors(current):
                 if neighbor not in visited:
                     stack.append((neighbor, path))
 
-        return None  # No path found
+        return None, self.nodes_searched  # No path found
 
     def heuristic(self, node, goal):
         """Heuristic function that supports different types of heuristics, including custom ones."""
@@ -784,29 +961,16 @@ class WarehouseVisualizer(QMainWindow):
         elif selected_distance == "Modified Euclidean (1.2x Y Priority)":
             return sqrt((x1 - x2) ** 2 + (1.2 * (y1 - y2)) ** 2)
 
-        # Custom heuristic: Aisle-Aware Heuristic
-        elif selected_distance == "Aisle-Aware Heuristic":
-            base_heuristic = abs(x1 - x2) + abs(y1 - y2)
-            penalty = 0
-            # Only add penalty if the current node is near an aisle but not if the target is on the aisle
-            if self.is_near_aisle(node) and node != goal:
-                penalty = 10  # Example penalty value, you can adjust this
-            return base_heuristic + penalty
-
         # Default fallback to Manhattan distance if no valid heuristic is selected
         return abs(x1 - x2) + abs(y1 - y2)
-
     def get_neighbors(self, node):
-        """Get the valid neighbors of the current node."""
+        """Get valid neighboring nodes."""
         (x, y) = node
         neighbors = []
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1),(-1, -1), (1, -1), (-1, 1), (1, 1)]:
             nx, ny = x + dx, y + dy
-            if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                neighbor_node = self.grid[ny][nx]
-                # Allow traversal if it's not an obstacle or it's the start/end node
-                if not neighbor_node.is_obstacle or neighbor_node.is_start or neighbor_node.is_end:
-                    neighbors.append((nx, ny))
+            if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
+                neighbors.append((nx, ny))
         return neighbors
 
     def reconstruct_path(self, came_from, current):
@@ -960,6 +1124,182 @@ class WarehouseVisualizer(QMainWindow):
 
         self.load_dropdown.blockSignals(False)  # Re-enable signals
 
+    def benchmark_algorithms(self):
+        """Benchmark the algorithm over all viable target nodes and collect metrics for each algorithm."""
+        if not self.start_node:
+            QMessageBox.warning(self, "Error", "Start node not set.")
+            return
+
+        if not hasattr(self, 'item_nodes') or not self.item_nodes:
+            QMessageBox.warning(self, "Error", "No target nodes available.")
+            return
+
+        reply = QMessageBox.question(self, 'Benchmark Algorithms',
+                                     "This operation may take some time. Do you want to proceed?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # Dictionary to store metrics for each algorithm
+        metrics_per_algorithm = {}
+
+        # Updated list of available algorithms
+        algorithms = ["Manhattan Distance", "Euclidean Distance", "Modified Euclidean (1.2x Y Priority)", "Dijkstra's"]
+
+        # Go over each algorithm and benchmark it
+        for algorithm in algorithms:
+            print(f"Benchmarking with {algorithm}...")
+
+            # Initialize metrics dictionary for each algorithm
+            metrics_per_algorithm[algorithm] = {
+                'items': {},
+                'total_path_length': 0,
+                'total_nodes_searched': 0,
+                'total_time_taken': 0,
+                'valid_items': 0
+            }
+
+            total_items = len(self.item_nodes)
+            processed_items = 0
+
+            for node_info in self.item_nodes:
+                node = node_info['node']
+                item_name = node_info['item']
+                x = node_info['x']
+                y = node_info['y']
+
+                # Skip if end node is the same as start node
+                if node == self.start_node:
+                    continue
+
+                # Set end node to this node
+                self.end_node = node
+
+                # Reset grid before each run
+                self.reset_grid()
+
+                # Run the algorithm
+                start_time = time.time()
+
+                # Get start and end coordinates
+                start_coords = (int(self.start_node.pos().x() // self.node_size),
+                                int(self.start_node.pos().y() // self.node_size))
+                end_coords = (x, y)
+
+                # Depending on the algorithm, call the respective method with visualize=False
+                if algorithm == "Dijkstra's":
+                    path, nodes_searched = self.run_dijkstra(start_coords, end_coords, visualize=False)
+                else:
+                    path, nodes_searched = self.run_astar(start_coords, end_coords, visualize=False)
+
+                end_time = time.time()
+                time_taken = end_time - start_time  # In seconds
+
+                if path:
+                    path_length = len(path)
+                else:
+                    path_length = None  # No path found
+
+                # Store metrics for the current item
+                metrics_per_algorithm[algorithm]['items'][item_name] = {
+                    'path_length': path_length,
+                    'nodes_searched': nodes_searched,
+                    'time_taken': time_taken
+                }
+
+                # Update totals if a valid path was found
+                if path_length is not None:
+                    metrics_per_algorithm[algorithm]['total_path_length'] += path_length
+                    metrics_per_algorithm[algorithm]['total_nodes_searched'] += nodes_searched
+                    metrics_per_algorithm[algorithm]['total_time_taken'] += time_taken
+                    metrics_per_algorithm[algorithm]['valid_items'] += 1
+
+                processed_items += 1
+
+            # Calculate averages
+            if metrics_per_algorithm[algorithm]['valid_items'] > 0:
+                metrics_per_algorithm[algorithm]['avg_path_length'] = metrics_per_algorithm[algorithm][
+                                                                          'total_path_length'] / \
+                                                                      metrics_per_algorithm[algorithm]['valid_items']
+                metrics_per_algorithm[algorithm]['avg_nodes_searched'] = metrics_per_algorithm[algorithm][
+                                                                             'total_nodes_searched'] / \
+                                                                         metrics_per_algorithm[algorithm]['valid_items']
+                metrics_per_algorithm[algorithm]['avg_time_taken'] = metrics_per_algorithm[algorithm][
+                                                                         'total_time_taken'] / \
+                                                                     metrics_per_algorithm[algorithm]['valid_items']
+            else:
+                metrics_per_algorithm[algorithm]['avg_path_length'] = None
+                metrics_per_algorithm[algorithm]['avg_nodes_searched'] = None
+                metrics_per_algorithm[algorithm]['avg_time_taken'] = None
+
+            print(f"Finished benchmarking {algorithm}.")
+
+        # Display and save results
+        self.display_benchmark_results(metrics_per_algorithm)
+        self.save_benchmark_results(metrics_per_algorithm)
+    def display_benchmark_results(self, metrics_per_algorithm):
+        """Display benchmark results for all algorithms."""
+        results_str = "Benchmark Results:\n"
+
+        for algorithm, data in metrics_per_algorithm.items():
+            results_str += f"\nAlgorithm: {algorithm}\n"
+            results_str += f"Average Path Length: {data['avg_path_length']}\n"
+            results_str += f"Average Nodes Searched: {data['avg_nodes_searched']}\n"
+            results_str += f"Average Time Taken: {data['avg_time_taken']:.4f} seconds\n"
+
+        # Show results in a message box
+        QMessageBox.information(self, "Benchmark Results", results_str)
+
+        # Also print to console for debugging
+        print(results_str)
+
+    def save_benchmark_results(self, metrics_per_algorithm):
+        """Save the benchmark results to a JSON file."""
+        # Save the benchmark results in a JSON file
+        filename = os.path.join(self.scenario_dir, "benchmark_results.json")
+        with open(filename, 'w') as f:
+            json.dump(metrics_per_algorithm, f, indent=4)
+
+        QMessageBox.information(self, "Benchmark Saved", f"Benchmark results saved to {filename}")
+
+    def run_astar(self, start, end, visualize=True):
+        """Runs the A* algorithm to find the path between start and end nodes."""
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        came_from = {}
+        g_score = {start: 0}
+        f_score = {start: self.heuristic(start, end)}
+        self.nodes_searched = 0  # Reset node search count
+
+        while open_set:
+            _, current = heapq.heappop(open_set)
+
+            if current == end:
+                # Return path and nodes_searched
+                path = self.reconstruct_path(came_from, current)
+                return path, self.nodes_searched
+
+            # Mark the node as visited visually and count it
+            self.nodes_searched += 1
+
+            if visualize:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                QApplication.processEvents()  # Update the UI in real-time
+
+            for neighbor in self.get_neighbors(current):
+                tentative_g_score = g_score[current] + 1
+
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        # No path found
+        return None, self.nodes_searched
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
