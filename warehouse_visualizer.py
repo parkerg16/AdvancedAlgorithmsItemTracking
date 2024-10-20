@@ -6,7 +6,7 @@ from math import sqrt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsScene, QGraphicsView, QGraphicsRectItem,
     QGraphicsTextItem, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QSpinBox,
-    QFileDialog, QInputDialog, QMessageBox
+    QFileDialog, QInputDialog, QMessageBox, QCheckBox
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont
@@ -165,9 +165,13 @@ class WarehouseVisualizer(QMainWindow):
 
         # Dropdown to select the algorithm
         self.algorithm_dropdown = QComboBox(self)
-        self.algorithm_dropdown.addItems(
-            ["Manhattan Distance", "Euclidean Distance", "Modified Euclidean (1.2x Y Priority)"])
-
+        self.algorithm_dropdown.addItems([
+            "A* (Manhattan Distance)",
+            "A* (Euclidean Distance)",
+            "A* (Modified Euclidean 1.2x Y Priority)",
+            "Dijkstra's",
+            "Bellman-Ford"
+        ])
         # Dropdown to select the warehouse layout
         self.layout_dropdown = QComboBox(self)
         self.layout_dropdown.addItems(["Vertical Aisles", "Horizontal Aisles", "Mixed Aisles"])
@@ -192,6 +196,8 @@ class WarehouseVisualizer(QMainWindow):
 
         self.barrier_button = QPushButton("Set Barriers", self)
         self.barrier_button.clicked.connect(self.set_mode_barrier)
+
+        self.diagonal_checkbox = QCheckBox("Allow Diagonal Neighbors", self)
 
         # Search button
         self.search_button = QPushButton("Search Path", self)
@@ -234,6 +240,7 @@ class WarehouseVisualizer(QMainWindow):
         layout.addWidget(self.shelf_spinbox)
         layout.addWidget(QLabel("Select Algorithm:", self))
         layout.addWidget(self.algorithm_dropdown)
+        layout.addWidget(self.diagonal_checkbox)
         layout.addWidget(self.start_button)
         layout.addWidget(self.end_button)
         layout.addWidget(self.barrier_button)
@@ -676,26 +683,83 @@ class WarehouseVisualizer(QMainWindow):
         end = (int(self.end_node.pos().x() // self.node_size),
                int(self.end_node.pos().y() // self.node_size))
 
-        # Determine which algorithm to run
+        # Check if diagonal neighbors are allowed (toggle checkbox)
+        diagonal_neighbors = self.diagonal_checkbox.isChecked()
+
+        # Determine which algorithm to run based on dropdown selection
         selected_algorithm = self.algorithm_dropdown.currentText()
 
-        if selected_algorithm == "Jump Point Search":
-            path, nodes_searched = self.run_jps(start, end, visualize=True)
-        elif selected_algorithm == "BFS":
-            path, nodes_searched = self.bfs(start, end, visualize=True)
-        elif selected_algorithm == "DFS":
-            path, nodes_searched = self.dfs(start, end, visualize=True)
+        if selected_algorithm == "Dijkstra's":
+            path, nodes_searched = self.run_dijkstra(start, end, diagonal_neighbors, visualize=True)
+        elif selected_algorithm == "Bellman-Ford":
+            path, nodes_searched = self.run_bellman_ford(start, end, diagonal_neighbors, visualize=True)
+        elif selected_algorithm == "A* (Manhattan Distance)":
+            path, nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
+        elif selected_algorithm == "A* (Euclidean Distance)":
+            path, nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
+        elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
+            path, nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
         else:
-            path, nodes_searched = self.run_astar(start, end, visualize=True)
+            self.counter_label.setText("Invalid algorithm selection.")
+            return
 
+        # If a path is found, visualize it step by step
         if path:
             self.search_path = path
             self.visualize_path_step_by_step()
         else:
             self.counter_label.setText("No path found.")
 
-    def run_dijkstra(self, start, end, visualize=True):
-        """Runs Dijkstra's algorithm (A* without a heuristic) to find the shortest path."""
+    def run_bellman_ford(self, start, end, diagonal_neighbors: bool, visualize=True):
+        """Runs Bellman-Ford algorithm to find the shortest path with optional diagonal neighbors."""
+        nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)]
+        edges = []
+
+        # Initialize distances and predecessors
+        distance = {node: float('inf') for node in nodes}
+        distance[start] = 0
+        predecessor = {node: None for node in nodes}
+
+        # Build the list of edges (each node connected to its neighbors)
+        for y in range(self.grid_size):
+            for x in range(self.grid_size):
+                current_node = (x, y)
+                for neighbor in self.get_neighbors(current_node, diagonal_neighbors):
+                    edges.append((current_node, neighbor, 1))  # Assuming uniform cost (1) for all edges
+
+        # Bellman-Ford Algorithm: Relax edges |V|-1 times
+        for _ in range(len(nodes) - 1):
+            for u, v, weight in edges:
+                if distance[u] + weight < distance[v]:
+                    distance[v] = distance[u] + weight
+                    predecessor[v] = u
+
+        # Check for negative weight cycles (not applicable in this case but part of Bellman-Ford)
+        for u, v, weight in edges:
+            if distance[u] + weight < distance[v]:
+                print("Graph contains a negative-weight cycle.")
+                return None, self.nodes_searched
+
+        # Reconstruct the path from end node to start node
+        path = []
+        current = end
+        while current is not None:
+            path.append(current)
+            current = predecessor[current]
+
+        path.reverse()  # Reverse the path to go from start to end
+
+        # Visualize the path if needed
+        self.nodes_searched = len(path)  # Count the nodes in the path
+        if visualize:
+            for node in path:
+                self.grid[node[1]][node[0]].set_path()
+                QApplication.processEvents()  # Update the UI in real-time
+
+        return path, self.nodes_searched
+
+    def run_dijkstra(self, start, end, diagonal_neighbors: bool, visualize=True):
+        """Runs Dijkstra's algorithm to find the shortest path with optional diagonal neighbors."""
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
@@ -718,7 +782,8 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
                 QApplication.processEvents()  # Update the UI in real-time
 
-            for neighbor in self.get_neighbors(current):
+            # Get neighbors, considering diagonal movement if enabled
+            for neighbor in self.get_neighbors(current, diagonal_neighbors):
                 tentative_g_score = g_score[current] + 1
 
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
@@ -729,8 +794,8 @@ class WarehouseVisualizer(QMainWindow):
         # No path found
         return None, self.nodes_searched
 
-    def run_astar(self, start, end, visualize=True):
-        """Runs the A* algorithm to find the path between start and end nodes."""
+    def run_astar(self, start, end, diagonal_neighbors: bool, visualize=True):
+        """Runs the A* algorithm to find the path between start and end nodes with optional diagonal neighbors."""
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
@@ -754,7 +819,8 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
                 QApplication.processEvents()  # Update the UI in real-time
 
-            for neighbor in self.get_neighbors(current):
+            # Get neighbors, considering diagonal movement if enabled
+            for neighbor in self.get_neighbors(current, diagonal_neighbors):
                 tentative_g_score = g_score[current] + 1
 
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
@@ -765,82 +831,6 @@ class WarehouseVisualizer(QMainWindow):
 
         # No path found
         return None, self.nodes_searched
-
-    def run_jps(self, start, end, visualize=True):
-        """Runs the Jump Point Search algorithm."""
-        self.start_pos = start
-        self.end_pos = end
-        open_set = []
-        heapq.heappush(open_set, (0, start))
-        came_from = {}
-        g_score = {start: 0}
-        self.nodes_searched = 0
-
-        while open_set:
-            _, current = heapq.heappop(open_set)
-
-            if current == end:
-                path = self.reconstruct_path(came_from, current)
-                return path, self.nodes_searched
-
-            self.nodes_searched += 1
-
-            if visualize:
-                self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()
-
-            neighbors = self.identify_successors(current)
-
-            for neighbor, cost in neighbors:
-                tentative_g_score = g_score[current] + cost
-
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score = tentative_g_score + self.heuristic(neighbor, end)
-                    heapq.heappush(open_set, (f_score, neighbor))
-
-        return None, self.nodes_searched  # No path found
-
-    def identify_successors(self, node):
-        """Identify successors in Jump Point Search."""
-        successors = []
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # 4-directional movement
-
-        for direction in directions:
-            jump_point = self.jump(node, direction)
-            if jump_point:
-                cost = self.distance(node, jump_point)
-                successors.append((jump_point, cost))
-        return successors
-
-    def jump(self, current, direction):
-        x, y = current
-        dx, dy = direction
-
-        next_x, next_y = x + dx, y + dy
-
-        if not self.is_valid_position(next_x, next_y) or self.is_obstacle(next_x, next_y):
-            return None
-
-        if (next_x, next_y) == self.end_pos:
-            return (next_x, next_y)
-
-        # Forced neighbor detection
-        if dx != 0:
-            # Moving horizontally
-            if (self.is_traversable(next_x, y - 1) and not self.is_traversable(x, y - 1)) or \
-                    (self.is_traversable(next_x, y + 1) and not self.is_traversable(x, y + 1)):
-                return (next_x, next_y)
-        elif dy != 0:
-            # Moving vertically
-            if (self.is_traversable(x - 1, next_y) and not self.is_traversable(x - 1, y)) or \
-                    (self.is_traversable(x + 1, next_y) and not self.is_traversable(x + 1, y)):
-                return (next_x, next_y)
-
-        # Continue moving in the same direction
-        return self.jump((next_x, next_y), direction)
 
     def is_valid_position(self, x, y):
         """Check if position is within grid bounds."""
@@ -958,19 +948,36 @@ class WarehouseVisualizer(QMainWindow):
         elif selected_distance == "Euclidean Distance":
             return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
-        elif selected_distance == "Modified Euclidean (1.2x Y Priority)":
+        elif selected_distance == "A* (Modified Euclidean 1.2x Y Priority)":
             return sqrt((x1 - x2) ** 2 + (1.2 * (y1 - y2)) ** 2)
 
         # Default fallback to Manhattan distance if no valid heuristic is selected
         return abs(x1 - x2) + abs(y1 - y2)
-    def get_neighbors(self, node):
+
+    def get_neighbors(self, node, diagonal_neighbors=False):
         """Get valid neighboring nodes."""
         (x, y) = node
+
+        # Four neighbors for horizontal and vertical movement (up, down, left, right)
+        four_neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+        # Eight neighbors includes diagonal movement (top-left, top-right, bottom-left, bottom-right)
+        eight_neighbors = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
+
+        # Start with only four neighbors (default)
+        potential_neighbors = four_neighbors
+
+        # If diagonal neighbors are allowed, add the diagonal neighbors to the list
+        if diagonal_neighbors:
+            potential_neighbors += eight_neighbors
+
         neighbors = []
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1),(-1, -1), (1, -1), (-1, 1), (1, 1)]:
+        for dx, dy in potential_neighbors:
             nx, ny = x + dx, y + dy
+            # Check if the position is valid and traversable
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
                 neighbors.append((nx, ny))
+
         return neighbors
 
     def reconstruct_path(self, came_from, current):
@@ -1146,7 +1153,13 @@ class WarehouseVisualizer(QMainWindow):
         metrics_per_algorithm = {}
 
         # Updated list of available algorithms
-        algorithms = ["Manhattan Distance", "Euclidean Distance", "Modified Euclidean (1.2x Y Priority)", "Dijkstra's"]
+        algorithms = [
+            "A* (Manhattan Distance)",
+            "A* (Euclidean Distance)",
+            "A* (Modified Euclidean 1.2x Y Priority)",
+            "Dijkstra's",
+            "Bellman-Ford"
+        ]
 
         # Go over each algorithm and benchmark it
         for algorithm in algorithms:
@@ -1188,11 +1201,24 @@ class WarehouseVisualizer(QMainWindow):
                                 int(self.start_node.pos().y() // self.node_size))
                 end_coords = (x, y)
 
-                # Depending on the algorithm, call the respective method with visualize=False
+                # Call the respective method based on the selected algorithm
                 if algorithm == "Dijkstra's":
-                    path, nodes_searched = self.run_dijkstra(start_coords, end_coords, visualize=False)
+                    path, nodes_searched = self.run_dijkstra(start_coords, end_coords, diagonal_neighbors=False,
+                                                             visualize=False)
+                elif algorithm == "Bellman-Ford":
+                    path, nodes_searched = self.run_bellman_ford(start_coords, end_coords, diagonal_neighbors=False,
+                                                                 visualize=False)
                 else:
-                    path, nodes_searched = self.run_astar(start_coords, end_coords, visualize=False)
+                    # For all A* algorithms, use the correct heuristic
+                    if "Manhattan" in algorithm:
+                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
+                                                              visualize=False)
+                    elif "Euclidean" in algorithm:
+                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
+                                                              visualize=False)
+                    elif "Modified Euclidean" in algorithm:
+                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
+                                                              visualize=False)
 
                 end_time = time.time()
                 time_taken = end_time - start_time  # In seconds
@@ -1239,6 +1265,7 @@ class WarehouseVisualizer(QMainWindow):
         # Display and save results
         self.display_benchmark_results(metrics_per_algorithm)
         self.save_benchmark_results(metrics_per_algorithm)
+
     def display_benchmark_results(self, metrics_per_algorithm):
         """Display benchmark results for all algorithms."""
         results_str = "Benchmark Results:\n"
@@ -1264,20 +1291,29 @@ class WarehouseVisualizer(QMainWindow):
 
         QMessageBox.information(self, "Benchmark Saved", f"Benchmark results saved to {filename}")
 
-    def run_astar(self, start, end, visualize=True):
+    def run_astar(self, start, end, diagonal_neighbors=False, visualize=True):
         """Runs the A* algorithm to find the path between start and end nodes."""
+        # Priority queue (min-heap), starting with the start node
         open_set = []
         heapq.heappush(open_set, (0, start))
+
+        # Track the path taken
         came_from = {}
+
+        # Cost of the shortest path from start to each node
         g_score = {start: 0}
+
+        # Estimated cost from start to end through each node (g_score + heuristic)
         f_score = {start: self.heuristic(start, end)}
-        self.nodes_searched = 0  # Reset node search count
+
+        self.nodes_searched = 0  # Reset the count of nodes searched
 
         while open_set:
+            # Get the node in open_set with the lowest f_score
             _, current = heapq.heappop(open_set)
 
+            # If the current node is the end node, reconstruct and return the path
             if current == end:
-                # Return path and nodes_searched
                 path = self.reconstruct_path(came_from, current)
                 return path, self.nodes_searched
 
@@ -1289,17 +1325,24 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
                 QApplication.processEvents()  # Update the UI in real-time
 
-            for neighbor in self.get_neighbors(current):
-                tentative_g_score = g_score[current] + 1
+            # Get the neighbors of the current node (considering diagonal movement if enabled)
+            for neighbor in self.get_neighbors(current, diagonal_neighbors):
+                tentative_g_score = g_score[current] + 1  # Assuming uniform cost (1) between nodes
 
+                # If this path to the neighbor is better, or the neighbor hasn't been visited yet
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    # Record the best path to this node
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g_score
                     f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end)
-                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-        # No path found
+                    # Push the neighbor to the priority queue if not already in it
+                    if neighbor not in [i[1] for i in open_set]:
+                        heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        # If the loop exits without finding a path, return no path
         return None, self.nodes_searched
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
