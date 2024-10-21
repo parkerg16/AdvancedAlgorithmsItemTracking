@@ -580,7 +580,7 @@ class WarehouseVisualizer(QMainWindow):
             warehouse_data = generate_warehouse_data(
                 num_aisles=self.num_aisles,
                 max_shelves_per_aisle=self.max_shelves_per_aisle,
-                save_to_csv=False
+                save_to_csv=True
             )
 
             # Clear the item dropdown and populate it with new items
