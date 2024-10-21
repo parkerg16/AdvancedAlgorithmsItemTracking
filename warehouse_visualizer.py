@@ -6,7 +6,7 @@ from math import sqrt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsScene, QGraphicsView, QGraphicsRectItem,
     QGraphicsTextItem, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QSpinBox,
-    QFileDialog, QInputDialog, QMessageBox, QCheckBox
+    QFileDialog, QInputDialog, QMessageBox, QCheckBox, QGraphicsItem
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont
@@ -60,18 +60,138 @@ def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=
 
 class Node(QGraphicsRectItem):
     def __init__(self, x, y, size, name, parent_window):
+        """
+        Initialize a Node instance.
+
+        Parameters:
+            x (int): The x-coordinate in the grid.
+            y (int): The y-coordinate in the grid.
+            size (int): The size of the node (width and height).
+            name (str): The name identifier for the node.
+            parent_window (WarehouseVisualizer): Reference to the main window.
+        """
         super().__init__(0, 0, size, size)
         self.setPos(x * size, y * size)
         self.name = name
-        self.setBrush(QBrush(QColor(255, 255, 255)))  # White by default
+        self.setBrush(QBrush(QColor(255, 255, 255)))  # Default color: White
         self.parent_window = parent_window
         self.is_obstacle = False
         self.is_start = False
         self.is_end = False
-        self.is_aisle = False  # New flag for aisles
+        self.edge_weight = 1  # Default edge weight
+        self.is_aisle = False
+        self.last_scroll_time = time.time()  # For throttling wheel events
+
+        # Enable focus to capture wheel events
+        self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsFocusable)
+
+        # Initialize edge weight label
+        self.weight_label = QGraphicsTextItem(str(self.edge_weight), self)
+        weight_font = QFont()
+        weight_font.setPointSize(10)
+        weight_font.setBold(True)
+        self.weight_label.setFont(weight_font)
+
+        # Center the weight text within the node
+        self.update_weight_label_position()
+
+        # Initialize item label (for shelf items)
+        self.item_label = QGraphicsTextItem("", self)
+        item_font = QFont()
+        item_font.setPointSize(8)
+        self.item_label.setFont(item_font)
+        self.item_label.setDefaultTextColor(QColor(0, 0, 0))  # Black color for item labels
+
+        # Initially hide the weight label if the node is an aisle
+        if self.is_aisle:
+            self.weight_label.hide()
+        if self.is_aisle:
+            self.item_label.hide()
+
+    def update_weight_label_position(self):
+        """Center the weight label within the node."""
+        text_rect = self.weight_label.boundingRect()
+        node_rect = self.rect()
+        self.weight_label.setPos(
+            (node_rect.width() - text_rect.width()) / 2,
+            (node_rect.height() - text_rect.height()) / 2
+        )
+
+    def update_item_label_position(self):
+        """Center the item label within the node."""
+        text_rect = self.item_label.boundingRect()
+        node_rect = self.rect()
+        self.item_label.setPos(
+            (node_rect.width() - text_rect.width()) / 2,
+            (node_rect.height() - text_rect.height()) / 2
+        )
+
+    def set_edge_weight_color(self):
+        """
+        Update the node's color based on its edge weight and update the weight label.
+        Aisle nodes retain their designated colors and are not altered by edge weights.
+        """
+        if not self.is_aisle:
+            red_intensity = max(0, 255 - (self.edge_weight - 1) * 25)
+            self.setBrush(QBrush(QColor(255, red_intensity, red_intensity)))  # Gradient from red to white
+
+            if self.weight_label:
+                self.weight_label.setPlainText(str(self.edge_weight))
+                self.update_weight_label_position()
+        else:
+            # For aisle nodes, ensure their color remains unchanged
+            # No action needed here since aisle colors are managed elsewhere
+            pass
+
+    def set_item_label(self, text):
+        """
+        Set the item label text.
+
+        Parameters:
+            text (str): The text to display as the item label.
+        """
+        if self.is_aisle:
+            self.item_label.hide()
+            return
+
+        self.item_label.setPlainText(text)
+        self.update_item_label_position()
+        if text:
+            self.item_label.show()
+        else:
+            self.item_label.hide()
+
+    def wheelEvent(self, event):
+        """
+        Handle mouse wheel events to adjust the edge weight with throttling.
+
+        Parameters:
+            event (QWheelEvent): The wheel event.
+        """
+        try:
+            current_time = time.time()
+            if current_time - self.last_scroll_time > 0.1:  # 100ms delay
+                # Using the deprecated delta() method as per requirement
+                delta_y = event.delta()
+                if delta_y != 0:
+                    delta = delta_y / 120  # Standard scroll value
+                    old_weight = self.edge_weight
+                    self.edge_weight = min(10, max(1, self.edge_weight + int(delta)))
+                    print(f"Edge weight changed from {old_weight} to {self.edge_weight}")
+                    self.set_edge_weight_color()
+                self.last_scroll_time = current_time
+        except AttributeError as ae:
+            print(f"AttributeError in wheelEvent: {ae}")
+        except Exception as e:
+            print(f"Error in wheelEvent: {e}")
 
     def mousePressEvent(self, event):
-        """Handle node click based on the current mode (start, end, barrier)."""
+        """
+        Handle mouse press events to set the node as start, end, or barrier based on current mode.
+
+        Parameters:
+            event (QGraphicsSceneMouseEvent): The mouse press event.
+        """
         mode = self.parent_window.current_mode
         if mode == 'start':
             self.parent_window.set_start_node(self)
@@ -81,60 +201,143 @@ class Node(QGraphicsRectItem):
             self.set_as_barrier()
 
     def mouseMoveEvent(self, event):
-        """Allow for dragging to set barriers in barrier mode."""
+        """
+        Handle mouse move events to set nodes as barriers when in barrier mode.
+
+        Parameters:
+            event (QGraphicsSceneMouseEvent): The mouse move event.
+        """
         mode = self.parent_window.current_mode
         if mode == 'barrier':
             self.set_as_barrier()
 
     def set_as_barrier(self):
-        """Mark the node as a barrier (yellow), unless it is an aisle or start/end node."""
+        """
+        Mark the node as a barrier (yellow) unless it's an aisle, start, or end node.
+        """
         if not self.is_aisle and not self.is_start and not self.is_end:
             self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
             self.is_obstacle = True
+            if self.weight_label:
+                self.weight_label.hide()  # Hide weight label when node becomes a barrier
+            if self.item_label:
+                self.item_label.hide()  # Hide item label when node becomes a barrier
 
     def set_visited(self):
-        self.setBrush(QBrush(QColor(0, 255, 0)))  # Green when visited
+        """Mark the node as visited (green) unless it's an aisle."""
+        if not self.is_aisle:
+            self.setBrush(QBrush(QColor(0, 255, 0)))  # Green when visited
+        else:
+            if not self.is_start and not self.is_end:
+                self.set_as_aisle(self.brush().color())  # Retain aisle color
+            # If it's start or end, do not change the color
 
     def set_path(self):
-        self.setBrush(QBrush(QColor(0, 0, 255)))  # Blue when part of the path
+        """Mark the node as part of the path (blue) unless it's an aisle."""
+        if not self.is_aisle:
+            self.setBrush(QBrush(QColor(0, 0, 255)))  # Blue when part of the path
+        else:
+            if not self.is_start and not self.is_end:
+                self.set_as_aisle(self.brush().color())  # Retain aisle color
+            # If it's start or end, do not change the color
 
     def reset(self):
-        """Reset the node to its default state (white or aisle color)."""
+        """Reset the node to its default visual state without altering edge_weight."""
         if not self.is_obstacle and not self.is_start and not self.is_end:
             if not self.is_aisle:
                 self.setBrush(QBrush(QColor(255, 255, 255)))  # White for reset
+                if self.weight_label:
+                    self.weight_label.show()
+                if self.item_label:
+                    self.item_label.show()
             else:
-                # Check if orientation_type exists, use a default if not
-                if hasattr(self.parent_window, 'orientation_type'):
-                    if self.parent_window.orientation_type == 'vertical':
-                        color = QColor(150, 150, 250)  # Light blue
-                    else:
-                        color = QColor(150, 0, 250)  # Purple
-                else:
-                    color = QColor(150, 150, 250)  # Default color if orientation_type is not set
-                self.setBrush(QBrush(color))
+                # Retain original aisle color by passing the current color
+                self.set_as_aisle(self.brush().color())
+                if self.weight_label:
+                    self.weight_label.hide()
+                if self.item_label:
+                    self.item_label.hide()
+        else:
+            # Maintain state for start, end, and barriers
+            if self.is_start:
+                self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+            elif self.is_end:
+                self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+            elif self.is_obstacle:
+                self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
+
+        # Update the visual representation based on the current edge_weight
+        if not self.is_aisle:
+            self.set_edge_weight_color()
 
     def set_as_start(self):
-        """Mark the node as the start (green)."""
+        """
+        Set the node as the start node (green) and update relevant states.
+        """
+        # Prevent setting the same node as both start and end
+        if self.parent_window.end_node == self:
+            return
+
+        # Reset previous start node if it exists
+        if self.parent_window.start_node:
+            self.parent_window.start_node.is_start = False
+            self.parent_window.start_node.reset()
+
+        # Set the new start node
         self.is_start = True
         self.is_obstacle = False  # Start node should not be an obstacle
         self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+        if self.weight_label:
+            self.weight_label.hide()  # Hide weight label when node becomes start
+        if self.item_label:
+            self.item_label.hide()  # Hide item label when node becomes start
+
+        # Update reference in parent window
+        self.parent_window.start_node = self
 
     def set_as_end(self):
-        """Mark the node as the end (red)."""
+        """
+        Set the node as the end node (red) and update relevant states.
+        """
+        # Prevent setting the same node as both start and end
+        if self.parent_window.start_node == self:
+            return
+
+        # Reset previous end node if it exists
+        if self.parent_window.end_node:
+            self.parent_window.end_node.is_end = False
+            self.parent_window.end_node.reset()
+
+        # Set the new end node
         self.is_end = True
         self.is_obstacle = False  # End node should not be an obstacle
         self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+        if self.weight_label:
+            self.weight_label.hide()  # Hide weight label when node becomes end
+        if self.item_label:
+            self.item_label.hide()  # Hide item label when node becomes end
 
-    def set_as_aisle(self, color=None):
-        """Mark the node as an aisle with specified color."""
-        if color is None:
-            color = QColor(150, 150, 250)  # Default light blue for vertical aisles
-        self.setBrush(QBrush(color))
+        # Update reference in parent window
+        self.parent_window.end_node = self
+
+    def set_as_aisle(self, aisle_color):
+        """
+        Set the node as an aisle with the specified color.
+
+        Parameters:
+            aisle_color (QColor): The color to set for the aisle node.
+        """
+        if self.is_start:
+            self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+        elif self.is_end:
+            self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+        else:
+            self.setBrush(QBrush(aisle_color))  # Use the passed aisle color
         self.is_aisle = True
-        self.is_obstacle = False  # Aisles are traversable
-
-
+        if self.weight_label:
+            self.weight_label.hide()
+        if self.item_label:
+            self.item_label.hide()
 class WarehouseVisualizer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -370,146 +573,137 @@ class WarehouseVisualizer(QMainWindow):
 
     def generate_warehouse_layout(self, orientation='vertical'):
         """Generate the warehouse layout with adjustable aisle spacing and label items."""
-        self.clear_all()
+        try:
+            self.clear_all()
 
-        # Generate warehouse data
-        warehouse_data = generate_warehouse_data(
-            num_aisles=self.num_aisles,
-            max_shelves_per_aisle=self.max_shelves_per_aisle,
-            save_to_csv=False
-        )
+            # Generate warehouse data
+            warehouse_data = generate_warehouse_data(
+                num_aisles=self.num_aisles,
+                max_shelves_per_aisle=self.max_shelves_per_aisle,
+                save_to_csv=False
+            )
 
-        # Clear the item dropdown and populate it with new items
-        self.item_dropdown.blockSignals(True)  # Block signals while populating the dropdown
-        self.item_dropdown.clear()  # Clear old items
-        self.item_dropdown.addItem("Select Item")  # Add default placeholder
+            # Clear the item dropdown and populate it with new items
+            self.item_dropdown.blockSignals(True)  # Block signals while populating the dropdown
+            self.item_dropdown.clear()  # Clear old items
+            self.item_dropdown.addItem("Select Item")  # Add default placeholder
 
-        self.item_nodes = []  # Initialize item_nodes list
+            self.item_nodes = []  # Initialize item_nodes list
 
-        aisles = warehouse_data['Aisle_Number'].nunique()
-        aisle_positions = []
+            aisles = warehouse_data['Aisle_Number'].nunique()
+            aisle_positions = []
 
-        vertical_positions = set()
-        horizontal_positions = set()
+            vertical_positions = set()
+            horizontal_positions = set()
 
-        if orientation == 'vertical':
-            for aisle_num in range(1, aisles + 1):
-                x = 2 + (aisle_num - 1) * (self.spacing + 1)
-                vertical_positions.add(x)
-                aisle_positions.append(('vertical', x))
-            max_x = max(vertical_positions) + 2
-            max_y = 2 + self.max_shelves_per_aisle
-        elif orientation == 'horizontal':
-            for aisle_num in range(1, aisles + 1):
-                y = 2 + (aisle_num - 1) * (self.spacing + 1)
-                horizontal_positions.add(y)
-                aisle_positions.append(('horizontal', y))
-            max_x = 2 + self.max_shelves_per_aisle
-            max_y = max(horizontal_positions) + 2
-        elif orientation == 'mixed':
-            num_vertical_aisles = (aisles + 1) // 2
-            num_horizontal_aisles = aisles // 2
+            # Determine max_x and max_y to prevent out-of-bounds access
+            max_x, max_y = 12, 12  # Default grid size
 
-            for i in range(num_vertical_aisles):
-                x = 2 + i * (self.spacing + 2)  # Ensure 1-block space by adding 2
-                vertical_positions.add(x)
-                aisle_positions.append(('vertical', x))
+            if orientation == 'vertical':
+                for aisle_num in range(1, aisles + 1):
+                    x = 2 + (aisle_num - 1) * (self.spacing + 1)
+                    vertical_positions.add(x)
+                    aisle_positions.append(('vertical', x))
+                max_x = max(vertical_positions) + 2
+                max_y = 2 + self.max_shelves_per_aisle
+            elif orientation == 'horizontal':
+                for aisle_num in range(1, aisles + 1):
+                    y = 2 + (aisle_num - 1) * (self.spacing + 1)
+                    horizontal_positions.add(y)
+                    aisle_positions.append(('horizontal', y))
+                max_x = 2 + self.max_shelves_per_aisle
+                max_y = max(horizontal_positions) + 2
+            elif orientation == 'mixed':
+                num_vertical_aisles = (aisles + 1) // 2
+                num_horizontal_aisles = aisles // 2
 
-            for i in range(num_horizontal_aisles):
-                y = 2 + i * (self.spacing + 2)
-                # Adjust y to ensure it's offset from x positions
-                while y in vertical_positions or y + 1 in vertical_positions:
-                    y += 1  # Shift y to avoid overlap and maintain 1-block space
-                horizontal_positions.add(y)
-                aisle_positions.append(('horizontal', y))
+                for i in range(num_vertical_aisles):
+                    x = 2 + i * (self.spacing + 2)  # Ensure 1-block space by adding 2
+                    vertical_positions.add(x)
+                    aisle_positions.append(('vertical', x))
 
-            max_x = max(max(vertical_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
-            max_y = max(max(horizontal_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
-        else:
-            max_x = max_y = 12  # Default grid size
+                for i in range(num_horizontal_aisles):
+                    y = 2 + i * (self.spacing + 2)
+                    # Adjust y to ensure it's offset from x positions
+                    while y in vertical_positions or y + 1 in vertical_positions:
+                        y += 1  # Shift y to avoid overlap and maintain 1-block space
+                    horizontal_positions.add(y)
+                    aisle_positions.append(('horizontal', y))
 
-        # Update grid size
-        self.grid_size = max(int(max_x), int(max_y)) + 2  # Add buffer
-        self.init_grid()  # Reinitialize the grid with the new size
+                max_x = max(max(vertical_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
+                max_y = max(max(horizontal_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
 
-        for i, row in warehouse_data.iterrows():
-            aisle_num = int(row['Aisle_Number'].split('_')[1])  # Extract aisle number
-            shelf_num = int(row['Shelf_Number'].split('_')[1])  # Extract shelf number
-            shelf_loc = row['Shelf_Location']
-            item = row['Item'] if row['Item'] is not None else "Empty"
+            # Adjust max_x and max_y to ensure they are within reasonable limits
+            max_x = min(max_x, 50)  # Set an upper limit for the grid size
+            max_y = min(max_y, 50)
 
-            # Skip if aisle number exceeds available positions
-            if aisle_num - 1 >= len(aisle_positions):
-                continue
+            # Update grid size
+            self.grid_size = max(int(max_x), int(max_y)) + 2  # Add buffer
+            self.init_grid()  # Reinitialize the grid with the new size
 
-            orientation_type, pos = aisle_positions[aisle_num - 1]
+            for i, row in warehouse_data.iterrows():
+                try:
+                    aisle_num = int(row['Aisle_Number'].split('_')[1])  # Extract aisle number
+                    shelf_num = int(row['Shelf_Number'].split('_')[1])  # Extract shelf number
+                    shelf_loc = row['Shelf_Location']
+                    item = row['Item'] if row['Item'] is not None else "Empty"
 
-            if orientation_type == 'vertical':
-                x = pos
-                y = 2 + (shelf_num - 1)  # Adjust for grid layout (y-axis for shelves)
-                aisle_color = QColor(150, 150, 250)  # Light blue
-            else:  # Horizontal
-                x = 2 + (shelf_num - 1)
-                y = pos
-                aisle_color = QColor(150, 0, 250)  # Purple color for horizontal aisles
+                    # Skip if aisle number exceeds available positions
+                    if aisle_num - 1 >= len(aisle_positions):
+                        continue
 
-            # Ensure coordinates are within grid bounds
-            if x >= self.grid_size or y >= self.grid_size:
-                continue  # Skip if out of bounds
+                    orientation_type, pos = aisle_positions[aisle_num - 1]
 
-            # Set the node as aisle with appropriate color
-            self.grid[y][x].set_as_aisle(aisle_color)
-            # Set the node's name to include aisle, shelf, and location
-            self.grid[y][x].name = f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"
+                    if orientation_type == 'vertical':
+                        x = pos
+                        y = 2 + (shelf_num - 1)  # Adjust for grid layout (y-axis for shelves)
+                        aisle_color = QColor(150, 150, 250)  # Light blue
+                    else:  # Horizontal
+                        x = 2 + (shelf_num - 1)
+                        y = pos
+                        aisle_color = QColor(150, 0, 250)  # Purple color for horizontal aisles
 
-            # Add the item to the dropdown if not empty
-            if item != "Empty":
-                self.item_dropdown.addItem(f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})")
+                    # Ensure coordinates are within grid bounds
+                    if x >= self.grid_size or y >= self.grid_size:
+                        print(f"Skipping node at ({x}, {y}) - out of bounds.")
+                        continue  # Skip if out of bounds
 
-                # Store the item node for benchmarking
-                node_info = {
-                    'node': self.grid[y][x],
-                    'item': item,
-                    'x': x,
-                    'y': y
-                }
-                self.item_nodes.append(node_info)
+                    node = self.grid[y][x]
+                    node.set_as_aisle(aisle_color)  # Pass the correct aisle color
+                    # Set the node's name to include aisle, shelf, and location
+                    node.name = f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"
 
-            # Define the item number
-            item_number = item.split('_')[-1] if item != "Empty" else "Empty"
+                    # Add the item to the dropdown if not empty
+                    if item != "Empty":
+                        self.item_dropdown.addItem(
+                            f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})")
 
-            # Add the item label to the node (only the number part of the item)
-            label = QGraphicsTextItem(item_number)
+                        # Store the item node for benchmarking
+                        node_info = {
+                            'node': node,
+                            'item': item,
+                            'x': x,
+                            'y': y
+                        }
+                        self.item_nodes.append(node_info)
 
-            # Scale down the font size
-            font = QFont()
-            font.setPointSize(8)  # You can adjust the font size here
-            label.setFont(font)
+                        # Define the item number
+                        item_number = item.split('_')[-1] if item != "Empty" else "Empty"
 
-            # Adjust the position of the label based on the shelf location
-            padding = 5  # Small padding for neat positioning
+                        # Set the item label using the Node class method
+                        node.set_item_label(item_number)
+                except Exception as e:
+                    print(f"Error processing row {i}: {e}")
 
-            node_x = self.grid[y][x].pos().x()
-            node_y = self.grid[y][x].pos().y()
+            # Re-enable signals now that dropdown is populated
+            self.item_dropdown.blockSignals(False)
 
-            if shelf_loc == 'A':
-                label.setPos(node_x + padding, node_y + padding)  # Top-left
-            elif shelf_loc == 'B':
-                label.setPos(node_x + self.node_size / 2 + padding, node_y + padding)  # Top-right
-            elif shelf_loc == 'C':
-                label.setPos(node_x + padding, node_y + self.node_size / 2 + padding)  # Bottom-left
-            elif shelf_loc == 'D':
-                label.setPos(node_x + self.node_size / 2 + padding,
-                             node_y + self.node_size / 2 + padding)  # Bottom-right
+            # Adjust the zoom to fit the new layout
+            self.adjust_zoom()
+            print(f"Item nodes available: {len(self.item_nodes)}")
 
-            self.scene.addItem(label)
-
-        # Re-enable signals now that dropdown is populated
-        self.item_dropdown.blockSignals(False)
-
-        # Adjust the zoom to fit the new layout
-        self.adjust_zoom()
-        print(f"Item nodes available: {len(self.item_nodes)}")
+        except Exception as e:
+            print(f"Error in generate_warehouse_layout: {e}")
 
     def set_mode_start(self):
         """Set mode to start node selection."""
@@ -710,8 +904,7 @@ class WarehouseVisualizer(QMainWindow):
         else:
             self.counter_label.setText("No path found.")
 
-    def run_bellman_ford(self, start, end, diagonal_neighbors: bool, visualize=True):
-        """Runs Bellman-Ford algorithm to find the shortest path with optional diagonal neighbors."""
+    def run_bellman_ford(self, start, end, diagonal_neighbors=False, visualize=True):
         nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)]
         edges = []
 
@@ -720,12 +913,15 @@ class WarehouseVisualizer(QMainWindow):
         distance[start] = 0
         predecessor = {node: None for node in nodes}
 
-        # Build the list of edges (each node connected to its neighbors)
+        # Build the list of edges with weights
         for y in range(self.grid_size):
             for x in range(self.grid_size):
                 current_node = (x, y)
-                for neighbor in self.get_neighbors(current_node, diagonal_neighbors):
-                    edges.append((current_node, neighbor, 1))  # Assuming uniform cost (1) for all edges
+                for neighbor_coords, weight in self.get_neighbors(current_node, diagonal_neighbors):
+                    edges.append((current_node, neighbor_coords, weight))  # Use tuple coordinates
+
+        self.nodes_searched = 0  # Reset the count of nodes searched
+        visited_nodes = set()  # To track unique nodes visited
 
         # Bellman-Ford Algorithm: Relax edges |V|-1 times
         for _ in range(len(nodes) - 1):
@@ -733,6 +929,16 @@ class WarehouseVisualizer(QMainWindow):
                 if distance[u] + weight < distance[v]:
                     distance[v] = distance[u] + weight
                     predecessor[v] = u
+
+                    if v not in visited_nodes:
+                        visited_nodes.add(v)
+                        self.nodes_searched += 1
+
+                    # Mark the node as visited and update the UI if needed
+                    if visualize:
+                        self.grid[v[1]][v[0]].set_visited()
+                        self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
+                        QApplication.processEvents()  # Update the UI in real-time
 
         # Check for negative weight cycles (not applicable in this case but part of Bellman-Ford)
         for u, v, weight in edges:
@@ -750,16 +956,16 @@ class WarehouseVisualizer(QMainWindow):
         path.reverse()  # Reverse the path to go from start to end
 
         # Visualize the path if needed
-        self.nodes_searched = len(path)  # Count the nodes in the path
-        if visualize:
+        if visualize and path:
             for node in path:
-                self.grid[node[1]][node[0]].set_path()
-                QApplication.processEvents()  # Update the UI in real-time
+                # Avoid changing the color of start and end nodes
+                if node != start and node != end:
+                    self.grid[node[1]][node[0]].set_path()
+                    QApplication.processEvents()  # Update the UI in real-time
 
-        return path, self.nodes_searched
+        return path if path[0] == start else None, self.nodes_searched
 
-    def run_dijkstra(self, start, end, diagonal_neighbors: bool, visualize=True):
-        """Runs Dijkstra's algorithm to find the shortest path with optional diagonal neighbors."""
+    def run_dijkstra(self, start, end, diagonal_neighbors=False, visualize=True):
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
@@ -783,51 +989,13 @@ class WarehouseVisualizer(QMainWindow):
                 QApplication.processEvents()  # Update the UI in real-time
 
             # Get neighbors, considering diagonal movement if enabled
-            for neighbor in self.get_neighbors(current, diagonal_neighbors):
-                tentative_g_score = g_score[current] + 1
+            for neighbor_coords, weight in self.get_neighbors(current, diagonal_neighbors):
+                tentative_g_score = g_score[current] + weight  # Use edge weight here
 
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    heapq.heappush(open_set, (g_score[neighbor], neighbor))
-
-        # No path found
-        return None, self.nodes_searched
-
-    def run_astar(self, start, end, diagonal_neighbors: bool, visualize=True):
-        """Runs the A* algorithm to find the path between start and end nodes with optional diagonal neighbors."""
-        open_set = []
-        heapq.heappush(open_set, (0, start))
-        came_from = {}
-        g_score = {start: 0}
-        f_score = {start: self.heuristic(start, end)}
-        self.nodes_searched = 0  # Reset node search count
-
-        while open_set:
-            _, current = heapq.heappop(open_set)
-
-            if current == end:
-                # Return path and nodes_searched
-                path = self.reconstruct_path(came_from, current)
-                return path, self.nodes_searched
-
-            # Mark the node as visited visually and count it
-            self.nodes_searched += 1
-
-            if visualize:
-                self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
-
-            # Get neighbors, considering diagonal movement if enabled
-            for neighbor in self.get_neighbors(current, diagonal_neighbors):
-                tentative_g_score = g_score[current] + 1
-
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end)
-                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                if neighbor_coords not in g_score or tentative_g_score < g_score[neighbor_coords]:
+                    came_from[neighbor_coords] = current
+                    g_score[neighbor_coords] = tentative_g_score
+                    heapq.heappush(open_set, (g_score[neighbor_coords], neighbor_coords))
 
         # No path found
         return None, self.nodes_searched
@@ -847,139 +1015,61 @@ class WarehouseVisualizer(QMainWindow):
 
     def is_traversable(self, x, y):
         """Check if the node is traversable (not an obstacle or it's the start/end node)."""
-        # Check if the node is valid and not an obstacle
         if not self.is_valid_position(x, y):
             return False
-        # Allow aisles to be traversable only if they are the end node
-        if self.grid[y][x].is_aisle and self.grid[y][x] != self.end_node:
-            return False
-        return not self.is_obstacle(x, y)
+        node = self.grid[y][x]
 
+        # Allow aisles to be traversable only if they are the end node
+        if node.is_aisle and node != self.end_node:
+            return False
+
+        return not node.is_obstacle
     def distance(self, node_a, node_b):
         """Calculate distance between two nodes."""
         (x1, y1) = node_a
         (x2, y2) = node_b
         return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
-    def is_near_aisle(self, node):
-        """Check if the node is near an aisle and return True if so."""
-        (x, y) = node
-        # Check adjacent nodes to see if any are aisles
-        neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-        for nx, ny in neighbors:
-            if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                if self.grid[ny][nx].is_aisle:
-                    return True
-        return False
-
-    def bfs(self, start, end, visualize=True):
-        """Breadth-First Search algorithm to find the shortest path."""
-        queue = [(start, [])]  # Queue of tuples (node, path)
-        visited = set()
-        self.nodes_searched = 0  # Reset node search count
-
-        while queue:
-            (current, path) = queue.pop(0)
-            if current in visited:
-                continue
-            visited.add(current)
-
-            # Mark the node as visited visually and count it
-            self.nodes_searched += 1
-
-            if visualize:
-                self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
-
-            path = path + [current]
-
-            if current == end:
-                return path, self.nodes_searched
-
-            for neighbor in self.get_neighbors(current):
-                if neighbor not in visited:
-                    queue.append((neighbor, path))
-
-        return None, self.nodes_searched  # No path found
-
-    def dfs(self, start, end, visualize=True):
-        """Depth-First Search algorithm to find the path."""
-        stack = [(start, [])]  # Stack of tuples (node, path)
-        visited = set()
-        self.nodes_searched = 0  # Reset node search count
-
-        while stack:
-            (current, path) = stack.pop()
-            if current in visited:
-                continue
-            visited.add(current)
-
-            # Mark the node as visited visually and count it
-            self.nodes_searched += 1
-
-            if visualize:
-                self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
-
-            path = path + [current]
-
-            if current == end:
-                return path, self.nodes_searched
-
-            for neighbor in self.get_neighbors(current):
-                if neighbor not in visited:
-                    stack.append((neighbor, path))
-
-        return None, self.nodes_searched  # No path found
-
     def heuristic(self, node, goal):
         """Heuristic function that supports different types of heuristics, including custom ones."""
         (x1, y1) = node
         (x2, y2) = goal
 
-        selected_distance = self.algorithm_dropdown.currentText()
+        selected_algorithm = self.algorithm_dropdown.currentText()
 
-        # Base heuristics (Manhattan, Euclidean, Modified Euclidean)
-        if selected_distance == "Manhattan Distance":
+        # Base heuristics based on the algorithm selected
+        if "Manhattan Distance" in selected_algorithm:
             return abs(x1 - x2) + abs(y1 - y2)
 
-        elif selected_distance == "Euclidean Distance":
+        elif "Euclidean Distance" in selected_algorithm:
             return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
-        elif selected_distance == "A* (Modified Euclidean 1.2x Y Priority)":
+        elif "Modified Euclidean" in selected_algorithm:
             return sqrt((x1 - x2) ** 2 + (1.2 * (y1 - y2)) ** 2)
 
         # Default fallback to Manhattan distance if no valid heuristic is selected
         return abs(x1 - x2) + abs(y1 - y2)
 
     def get_neighbors(self, node, diagonal_neighbors=False):
-        """Get valid neighboring nodes."""
+        """Get valid neighboring nodes and their edge weights."""
         (x, y) = node
 
-        # Four neighbors for horizontal and vertical movement (up, down, left, right)
         four_neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-
-        # Eight neighbors includes diagonal movement (top-left, top-right, bottom-left, bottom-right)
         eight_neighbors = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
 
-        # Start with only four neighbors (default)
         potential_neighbors = four_neighbors
-
-        # If diagonal neighbors are allowed, add the diagonal neighbors to the list
         if diagonal_neighbors:
             potential_neighbors += eight_neighbors
 
         neighbors = []
         for dx, dy in potential_neighbors:
             nx, ny = x + dx, y + dy
-            # Check if the position is valid and traversable
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
-                neighbors.append((nx, ny))
+                neighbor_coords = (nx, ny)
+                neighbor_node = self.grid[ny][nx]
+                neighbors.append((neighbor_coords, neighbor_node.edge_weight))  # Correctly retrieve edge_weight
 
         return neighbors
-
     def reconstruct_path(self, came_from, current):
         """Reconstructs the path from the A* or JPS result."""
         path = []
@@ -1005,9 +1095,9 @@ class WarehouseVisualizer(QMainWindow):
         """Update the grid one step at a time."""
         if self.step_index < len(self.search_path):
             x, y = self.search_path[self.step_index]
-            if (x, y) != (int(self.start_node.pos().x() // self.node_size),
-                          int(self.start_node.pos().y() // self.node_size)):  # Don't change the start node color
-                self.grid[y][x].set_path()
+            node = self.grid[y][x]
+            if not node.is_aisle and not node.is_start and not node.is_end:
+                node.set_path()
             self.step_index += 1
         else:
             self.timer.stop()  # Stop once the entire path is visualized
@@ -1292,55 +1382,38 @@ class WarehouseVisualizer(QMainWindow):
         QMessageBox.information(self, "Benchmark Saved", f"Benchmark results saved to {filename}")
 
     def run_astar(self, start, end, diagonal_neighbors=False, visualize=True):
-        """Runs the A* algorithm to find the path between start and end nodes."""
-        # Priority queue (min-heap), starting with the start node
         open_set = []
         heapq.heappush(open_set, (0, start))
-
-        # Track the path taken
         came_from = {}
-
-        # Cost of the shortest path from start to each node
         g_score = {start: 0}
-
-        # Estimated cost from start to end through each node (g_score + heuristic)
         f_score = {start: self.heuristic(start, end)}
-
-        self.nodes_searched = 0  # Reset the count of nodes searched
+        self.nodes_searched = 0
 
         while open_set:
-            # Get the node in open_set with the lowest f_score
             _, current = heapq.heappop(open_set)
 
-            # If the current node is the end node, reconstruct and return the path
             if current == end:
                 path = self.reconstruct_path(came_from, current)
                 return path, self.nodes_searched
 
-            # Mark the node as visited visually and count it
             self.nodes_searched += 1
 
             if visualize:
                 self.grid[current[1]][current[0]].set_visited()
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
+                QApplication.processEvents()
 
-            # Get the neighbors of the current node (considering diagonal movement if enabled)
-            for neighbor in self.get_neighbors(current, diagonal_neighbors):
-                tentative_g_score = g_score[current] + 1  # Assuming uniform cost (1) between nodes
+            for neighbor_coords, weight in self.get_neighbors(current, diagonal_neighbors):
+                tentative_g_score = g_score[current] + weight  # Use edge weight here
 
-                # If this path to the neighbor is better, or the neighbor hasn't been visited yet
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    # Record the best path to this node
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end)
+                if neighbor_coords not in g_score or tentative_g_score < g_score[neighbor_coords]:
+                    came_from[neighbor_coords] = current
+                    g_score[neighbor_coords] = tentative_g_score
+                    f_score[neighbor_coords] = tentative_g_score + self.heuristic(neighbor_coords, end)
 
-                    # Push the neighbor to the priority queue if not already in it
-                    if neighbor not in [i[1] for i in open_set]:
-                        heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                    if neighbor_coords not in [i[1] for i in open_set]:
+                        heapq.heappush(open_set, (f_score[neighbor_coords], neighbor_coords))
 
-        # If the loop exits without finding a path, return no path
         return None, self.nodes_searched
 
 
