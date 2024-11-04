@@ -338,6 +338,8 @@ class Node(QGraphicsRectItem):
             self.weight_label.hide()
         if self.item_label:
             self.item_label.hide()
+
+
 class WarehouseVisualizer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -430,6 +432,12 @@ class WarehouseVisualizer(QMainWindow):
         self.benchmark_button = QPushButton("Benchmark Algorithms", self)
         self.benchmark_button.clicked.connect(self.benchmark_algorithms)
 
+        # *** New Button Addition Start ***
+        # Button to show all paths
+        self.show_all_paths_button = QPushButton("Show All Paths", self)
+        self.show_all_paths_button.clicked.connect(self.handle_show_all_paths)
+        # *** New Button Addition End ***
+
         # Layout setup
         layout = QVBoxLayout()
         layout.addWidget(self.view)
@@ -471,6 +479,9 @@ class WarehouseVisualizer(QMainWindow):
         self.zoom_out_button = QPushButton("Zoom Out", self)
         self.zoom_out_button.clicked.connect(self.zoom_out)
         layout.addWidget(self.zoom_out_button)
+
+        # Add the new "Show All Paths" button to the layout
+        layout.addWidget(self.show_all_paths_button)  # *** New Button Addition ***
 
         layout.addWidget(self.benchmark_button)  # Add benchmark button to the layout
 
@@ -720,6 +731,8 @@ class WarehouseVisualizer(QMainWindow):
     def set_start_node(self, node):
         """Set the selected node as the start node."""
         # Prevent setting the same node as both start and end
+        if not hasattr(self, 'start_node'):
+            self.start_node = None
         if self.end_node == node:
             return
 
@@ -735,6 +748,8 @@ class WarehouseVisualizer(QMainWindow):
     def set_end_node(self, node):
         """Set the selected node as the end node."""
         # Prevent setting the same node as both start and end
+        if not hasattr(self, 'end_node'):
+            self.end_node = None
         if self.start_node == node:
             return
 
@@ -1004,7 +1019,7 @@ class WarehouseVisualizer(QMainWindow):
         """Check if position is within grid bounds."""
         return 0 <= x < self.grid_size and 0 <= y < self.grid_size
 
-    def is_obstacle(self, x, y):
+    def is_obstacle_func(self, x, y):
         """Check if the node is an obstacle, and ensure aisles are non-traversable except the end node."""
         if not self.is_valid_position(x, y):
             return True
@@ -1024,6 +1039,7 @@ class WarehouseVisualizer(QMainWindow):
             return False
 
         return not node.is_obstacle
+
     def distance(self, node_a, node_b):
         """Calculate distance between two nodes."""
         (x1, y1) = node_a
@@ -1070,6 +1086,7 @@ class WarehouseVisualizer(QMainWindow):
                 neighbors.append((neighbor_coords, neighbor_node.edge_weight))  # Correctly retrieve edge_weight
 
         return neighbors
+
     def reconstruct_path(self, came_from, current):
         """Reconstructs the path from the A* or JPS result."""
         path = []
@@ -1415,6 +1432,118 @@ class WarehouseVisualizer(QMainWindow):
                         heapq.heappush(open_set, (f_score[neighbor_coords], neighbor_coords))
 
         return None, self.nodes_searched
+
+    # *** New Method Addition Start ***
+    def handle_show_all_paths(self):
+        """Handle the 'Show All Paths' button click to visualize paths to all nodes."""
+        if not self.start_node:
+            QMessageBox.warning(self, "Error", "Start node not set.")
+            return
+
+        if not hasattr(self, 'item_nodes') or not self.item_nodes:
+            QMessageBox.warning(self, "Error", "No target nodes available.")
+            return
+
+        reply = QMessageBox.question(self, 'Show All Paths',
+                                     "This operation will visualize paths to all items. Do you want to proceed?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # Disable UI elements to prevent interference during the operation
+        self.set_ui_enabled(False)
+
+        # Initialize a list of target nodes
+        self.all_target_nodes = self.item_nodes.copy()
+        self.current_target_index = 0
+
+        # Initialize a timer to handle path visualization sequentially
+        self.all_paths_timer = QTimer(self)
+        self.all_paths_timer.timeout.connect(self.visualize_next_path)
+        self.all_paths_timer.start(100)  # 100 ms delay between paths
+
+    def visualize_next_path(self):
+        """Visualize the next path in the list of target nodes."""
+        if self.current_target_index >= len(self.all_target_nodes):
+            self.all_paths_timer.stop()
+            QMessageBox.information(self, "Show All Paths", "Completed visualizing all paths.")
+            self.set_ui_enabled(True)
+            return
+
+        node_info = self.all_target_nodes[self.current_target_index]
+        node = node_info['node']
+        item_name = node_info['item']
+        x = node_info['x']
+        y = node_info['y']
+
+        # Set end node to this node
+        self.end_node = node
+
+        # Reset grid before each run
+        self.reset_grid()
+
+        # Get start and end coordinates
+        start_coords = (int(self.start_node.pos().x() // self.node_size),
+                        int(self.start_node.pos().y() // self.node_size))
+        end_coords = (x, y)
+
+        # Determine which algorithm to run based on dropdown selection
+        selected_algorithm = self.algorithm_dropdown.currentText()
+
+        if selected_algorithm == "Dijkstra's":
+            path, _ = self.run_dijkstra(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
+        elif selected_algorithm == "Bellman-Ford":
+            path, _ = self.run_bellman_ford(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
+        elif selected_algorithm == "A* (Manhattan Distance)":
+            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
+        elif selected_algorithm == "A* (Euclidean Distance)":
+            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
+        elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
+            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
+        else:
+            path = None
+
+        # Visualize the path if found
+        if path:
+            for node_coords in path:
+                if node_coords != start_coords and node_coords != end_coords:
+                    self.grid[node_coords[1]][node_coords[0]].set_path()
+            # Optionally, display a brief message or log
+            print(f"Path to {item_name} visualized.")
+        else:
+            print(f"No path found to {item_name}.")
+
+        # Update the counter label
+        self.counter_label.setText(f"Visualized paths: {self.current_target_index + 1}/{len(self.all_target_nodes)}")
+        QApplication.processEvents()  # Update the UI in real-time
+
+        # Move to the next target node
+        self.current_target_index += 1
+
+    def set_ui_enabled(self, enabled):
+        """Enable or disable UI elements during bulk operations."""
+        self.spacing_dropdown.setEnabled(enabled)
+        self.algorithm_dropdown.setEnabled(enabled)
+        self.layout_dropdown.setEnabled(enabled)
+        self.aisle_spinbox.setEnabled(enabled)
+        self.shelf_spinbox.setEnabled(enabled)
+        self.start_button.setEnabled(enabled)
+        self.end_button.setEnabled(enabled)
+        self.barrier_button.setEnabled(enabled)
+        self.diagonal_checkbox.setEnabled(enabled)
+        self.search_button.setEnabled(enabled)
+        self.generate_button.setEnabled(enabled)
+        self.save_button.setEnabled(enabled)
+        self.load_dropdown.setEnabled(enabled)
+        self.clear_button.setEnabled(enabled)
+        self.item_dropdown.setEnabled(enabled)
+        self.zoom_in_button.setEnabled(enabled)
+        self.zoom_out_button.setEnabled(enabled)
+        self.benchmark_button.setEnabled(enabled)
+        self.show_all_paths_button.setEnabled(enabled)
+    # *** New Method Addition End ***
 
 
 if __name__ == "__main__":
