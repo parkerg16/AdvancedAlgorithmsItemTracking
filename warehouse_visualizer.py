@@ -1316,7 +1316,7 @@ class WarehouseVisualizer(QMainWindow):
         self.load_dropdown.blockSignals(False)  # Re-enable signals
 
     def run_random_benchmarks(self):
-        """Run multiple benchmark runs with randomly selected start nodes."""
+        """Run multiple benchmark runs with randomly selected start nodes and save detailed metrics to a JSON file."""
         num_runs = self.benchmark_spinbox.value()
 
         # Determine target nodes based on the checkbox state
@@ -1350,38 +1350,12 @@ class WarehouseVisualizer(QMainWindow):
         # Disable UI elements to prevent interference during benchmarking
         self.set_ui_enabled(False)
 
-        # Initialize aggregated metrics
-        aggregated_metrics = {
-            'A* (Manhattan Distance)': {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            'A* (Euclidean Distance)': {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            'A* (Modified Euclidean 1.2x Y Priority)': {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            "Dijkstra's": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            'Bellman-Ford': {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            }
+        # Initialize data structure to hold all benchmark data
+        benchmark_data = {
+            'num_runs': num_runs,
+            'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+            'mode': 'All Nodes' if self.all_nodes_checkbox.isChecked() else 'Item Nodes',
+            'runs': []
         }
 
         # Get a list of all traversable nodes (non-obstacle and non-aisle)
@@ -1407,35 +1381,35 @@ class WarehouseVisualizer(QMainWindow):
             self.counter_label.setText(f"Benchmark Run {run}/{num_runs} - Start Node: {start_node.name}")
             QApplication.processEvents()  # Update the UI
 
-            # Run the benchmarking process
-            metrics = self.benchmark_single_run(target_nodes)
+            # Run the benchmarking process and collect detailed metrics
+            run_metrics = self.benchmark_single_run(target_nodes)
 
-            # Aggregate the metrics
-            for algorithm, data in metrics.items():
-                if data['avg_path_length'] is not None:
-                    aggregated_metrics[algorithm]['total_path_length'] += data['avg_path_length']
-                    aggregated_metrics[algorithm]['total_nodes_searched'] += data['avg_nodes_searched']
-                    aggregated_metrics[algorithm]['total_time_taken'] += data['avg_time_taken']
-                    aggregated_metrics[algorithm]['valid_runs'] += 1
+            # Append the run data to benchmark_data
+            benchmark_data['runs'].append({
+                'run_number': run,
+                'start_node': self.get_node_position(start_node),
+                'metrics': run_metrics
+            })
 
-        # Calculate average metrics
-        average_metrics = {}
-        for algorithm, data in aggregated_metrics.items():
-            if data['valid_runs'] > 0:
-                average_metrics[algorithm] = {
-                    'avg_path_length': data['total_path_length'] / data['valid_runs'],
-                    'avg_nodes_searched': data['total_nodes_searched'] / data['valid_runs'],
-                    'avg_time_taken': data['total_time_taken'] / data['valid_runs']
-                }
-            else:
-                average_metrics[algorithm] = {
-                    'avg_path_length': None,
-                    'avg_nodes_searched': None,
-                    'avg_time_taken': None
-                }
+        # Define the output filename with number of runs and timestamp
+        output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['timestamp']}.json"
+        output_filepath = os.path.join(self.scenario_dir, output_filename)
 
-        # Plot and save the aggregated benchmark results
-        self.plot_benchmark_results(average_metrics, num_runs, mode="Random Start Nodes")
+        # Save the benchmark data to the JSON file
+        try:
+            with open(output_filepath, 'w') as f:
+                json.dump(benchmark_data, f, indent=4)
+            QMessageBox.information(
+                self,
+                "Benchmark Saved",
+                f"Random benchmark results saved to {output_filepath}"
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error Saving Benchmark",
+                f"An error occurred while saving benchmark results:\n{e}"
+            )
 
         # Re-enable UI elements
         self.set_ui_enabled(True)
@@ -1444,7 +1418,7 @@ class WarehouseVisualizer(QMainWindow):
         QMessageBox.information(
             self,
             "Random Benchmarks Completed",
-            f"Completed {num_runs} benchmarking runs with {'all nodes' if self.all_nodes_checkbox.isChecked() else 'random item nodes'} as targets."
+            f"Completed {num_runs} benchmarking runs with {'all nodes' if self.all_nodes_checkbox.isChecked() else 'item nodes'} as targets."
         )
 
     def benchmark_single_run(self):
@@ -1861,7 +1835,7 @@ class WarehouseVisualizer(QMainWindow):
     def benchmark_single_run(self, target_nodes):
         """
         Perform a single benchmark run from the current start node to specified target nodes.
-        Returns a dictionary with metrics for each algorithm.
+        Returns a dictionary with detailed metrics for each algorithm and target node.
         """
         # Reset the grid before the run
         self.reset_grid()
@@ -1871,38 +1845,19 @@ class WarehouseVisualizer(QMainWindow):
             QMessageBox.warning(self, "Error", "Start node is not set.")
             return {}
 
+        # Get start coordinates
+        start_coords = (
+            int(self.start_node.pos().x() // self.node_size),
+            int(self.start_node.pos().y() // self.node_size)
+        )
+
         # Prepare metrics storage
         metrics_per_algorithm = {
-            "A* (Manhattan Distance)": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            "A* (Euclidean Distance)": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            "A* (Modified Euclidean 1.2x Y Priority)": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            "Dijkstra's": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            },
-            "Bellman-Ford": {
-                'total_path_length': 0,
-                'total_nodes_searched': 0,
-                'total_time_taken': 0,
-                'valid_runs': 0
-            }
+            "A* (Manhattan Distance)": {},
+            "A* (Euclidean Distance)": {},
+            "A* (Modified Euclidean 1.2x Y Priority)": {},
+            "Dijkstra's": {},
+            "Bellman-Ford": {}
         }
 
         # Iterate through all target nodes
@@ -1917,17 +1872,13 @@ class WarehouseVisualizer(QMainWindow):
             # Reset grid for the new end node
             self.reset_grid()
 
-            # Get start and end coordinates
-            start_coords = (
-                int(self.start_node.pos().x() // self.node_size),
-                int(self.start_node.pos().y() // self.node_size)
-            )
+            # Get end coordinates
             end_coords = (
                 int(self.end_node.pos().x() // self.node_size),
                 int(self.end_node.pos().y() // self.node_size)
             )
 
-            # Determine which algorithms to run
+            # Define algorithms to run
             algorithms = [
                 "A* (Manhattan Distance)",
                 "A* (Euclidean Distance)",
@@ -1969,28 +1920,19 @@ class WarehouseVisualizer(QMainWindow):
                 # Collect metrics if a valid path is found
                 if path:
                     path_length = len(path)
-                    metrics_per_algorithm[algorithm]['total_path_length'] += path_length
-                    metrics_per_algorithm[algorithm]['total_nodes_searched'] += nodes_searched
-                    metrics_per_algorithm[algorithm]['total_time_taken'] += time_taken
-                    metrics_per_algorithm[algorithm]['valid_runs'] += 1
+                    metrics_per_algorithm[algorithm][f"Target_{node.name}"] = {
+                        'path_length': path_length,
+                        'nodes_searched': nodes_searched,
+                        'time_taken': time_taken
+                    }
+                else:
+                    metrics_per_algorithm[algorithm][f"Target_{node.name}"] = {
+                        'path_length': None,
+                        'nodes_searched': None,
+                        'time_taken': None
+                    }
 
-        # Calculate average metrics for this run
-        run_metrics = {}
-        for algorithm, data in metrics_per_algorithm.items():
-            if data['valid_runs'] > 0:
-                run_metrics[algorithm] = {
-                    'avg_path_length': data['total_path_length'] / data['valid_runs'],
-                    'avg_nodes_searched': data['total_nodes_searched'] / data['valid_runs'],
-                    'avg_time_taken': data['total_time_taken'] / data['valid_runs']
-                }
-            else:
-                run_metrics[algorithm] = {
-                    'avg_path_length': None,
-                    'avg_nodes_searched': None,
-                    'avg_time_taken': None
-                }
-
-        return run_metrics
+        return metrics_per_algorithm
 
     # *** New Method Addition Start ***
     def handle_show_all_paths(self):
