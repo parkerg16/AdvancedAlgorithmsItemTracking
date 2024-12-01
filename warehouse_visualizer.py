@@ -3,6 +3,7 @@ import heapq
 import pandas as pd
 import random
 from math import sqrt
+import matplotlib.pyplot as plt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsScene, QGraphicsView, QGraphicsRectItem,
     QGraphicsTextItem, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QSpinBox,
@@ -1248,10 +1249,13 @@ class WarehouseVisualizer(QMainWindow):
             QMessageBox.warning(self, "Error", "No target nodes available.")
             return
 
-        reply = QMessageBox.question(self, 'Benchmark Algorithms',
-                                     "This operation may take some time. Do you want to proceed?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self,
+            'Benchmark Algorithms',
+            "This operation may take some time. Do you want to proceed?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
 
         if reply == QMessageBox.StandardButton.No:
             return
@@ -1304,28 +1308,26 @@ class WarehouseVisualizer(QMainWindow):
                 start_time = time.time()
 
                 # Get start and end coordinates
-                start_coords = (int(self.start_node.pos().x() // self.node_size),
-                                int(self.start_node.pos().y() // self.node_size))
+                start_coords = (
+                    int(self.start_node.pos().x() // self.node_size),
+                    int(self.start_node.pos().y() // self.node_size)
+                )
                 end_coords = (x, y)
 
                 # Call the respective method based on the selected algorithm
                 if algorithm == "Dijkstra's":
-                    path, nodes_searched = self.run_dijkstra(start_coords, end_coords, diagonal_neighbors=False,
-                                                             visualize=False)
+                    path, nodes_searched = self.run_dijkstra(
+                        start_coords, end_coords, diagonal_neighbors=False, visualize=False
+                    )
                 elif algorithm == "Bellman-Ford":
-                    path, nodes_searched = self.run_bellman_ford(start_coords, end_coords, diagonal_neighbors=False,
-                                                                 visualize=False)
+                    path, nodes_searched = self.run_bellman_ford(
+                        start_coords, end_coords, diagonal_neighbors=False, visualize=False
+                    )
                 else:
                     # For all A* algorithms, use the correct heuristic
-                    if "Manhattan" in algorithm:
-                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
-                                                              visualize=False)
-                    elif "Euclidean" in algorithm:
-                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
-                                                              visualize=False)
-                    elif "Modified Euclidean" in algorithm:
-                        path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_neighbors=False,
-                                                              visualize=False)
+                    path, nodes_searched = self.run_astar(
+                        start_coords, end_coords, diagonal_neighbors=False, visualize=False
+                    )
 
                 end_time = time.time()
                 time_taken = end_time - start_time  # In seconds
@@ -1353,15 +1355,18 @@ class WarehouseVisualizer(QMainWindow):
 
             # Calculate averages
             if metrics_per_algorithm[algorithm]['valid_items'] > 0:
-                metrics_per_algorithm[algorithm]['avg_path_length'] = metrics_per_algorithm[algorithm][
-                                                                          'total_path_length'] / \
-                                                                      metrics_per_algorithm[algorithm]['valid_items']
-                metrics_per_algorithm[algorithm]['avg_nodes_searched'] = metrics_per_algorithm[algorithm][
-                                                                             'total_nodes_searched'] / \
-                                                                         metrics_per_algorithm[algorithm]['valid_items']
-                metrics_per_algorithm[algorithm]['avg_time_taken'] = metrics_per_algorithm[algorithm][
-                                                                         'total_time_taken'] / \
-                                                                     metrics_per_algorithm[algorithm]['valid_items']
+                metrics_per_algorithm[algorithm]['avg_path_length'] = (
+                        metrics_per_algorithm[algorithm]['total_path_length'] /
+                        metrics_per_algorithm[algorithm]['valid_items']
+                )
+                metrics_per_algorithm[algorithm]['avg_nodes_searched'] = (
+                        metrics_per_algorithm[algorithm]['total_nodes_searched'] /
+                        metrics_per_algorithm[algorithm]['valid_items']
+                )
+                metrics_per_algorithm[algorithm]['avg_time_taken'] = (
+                        metrics_per_algorithm[algorithm]['total_time_taken'] /
+                        metrics_per_algorithm[algorithm]['valid_items']
+                )
             else:
                 metrics_per_algorithm[algorithm]['avg_path_length'] = None
                 metrics_per_algorithm[algorithm]['avg_nodes_searched'] = None
@@ -1373,15 +1378,21 @@ class WarehouseVisualizer(QMainWindow):
         self.display_benchmark_results(metrics_per_algorithm)
         self.save_benchmark_results(metrics_per_algorithm)
 
+        # Plot and save the benchmark results
+        self.plot_benchmark_results(metrics_per_algorithm)
+
     def display_benchmark_results(self, metrics_per_algorithm):
         """Display benchmark results for all algorithms."""
         results_str = "Benchmark Results:\n"
 
         for algorithm, data in metrics_per_algorithm.items():
             results_str += f"\nAlgorithm: {algorithm}\n"
-            results_str += f"Average Path Length: {data['avg_path_length']}\n"
-            results_str += f"Average Nodes Searched: {data['avg_nodes_searched']}\n"
-            results_str += f"Average Time Taken: {data['avg_time_taken']:.4f} seconds\n"
+            if data['avg_path_length'] is not None:
+                results_str += f"  - Average Path Length: {data['avg_path_length']:.2f}\n"
+                results_str += f"  - Average Nodes Searched: {data['avg_nodes_searched']:.2f}\n"
+                results_str += f"  - Average Time Taken: {data['avg_time_taken']:.4f} seconds\n"
+            else:
+                results_str += "  - No valid paths found.\n"
 
         # Show results in a message box
         QMessageBox.information(self, "Benchmark Results", results_str)
@@ -1397,6 +1408,76 @@ class WarehouseVisualizer(QMainWindow):
             json.dump(metrics_per_algorithm, f, indent=4)
 
         QMessageBox.information(self, "Benchmark Saved", f"Benchmark results saved to {filename}")
+
+    def plot_benchmark_results(self, metrics_per_algorithm):
+        import matplotlib.pyplot as plt
+        import os
+
+        # Create a directory to save plots
+        plots_dir = os.path.join(self.scenario_dir, "benchmark_plots")
+        if not os.path.exists(plots_dir):
+            os.makedirs(plots_dir)
+
+        # Extract data for plotting
+        algorithms = list(metrics_per_algorithm.keys())
+        avg_path_length = [metrics_per_algorithm[alg]['avg_path_length'] for alg in algorithms]
+        avg_nodes_searched = [metrics_per_algorithm[alg]['avg_nodes_searched'] for alg in algorithms]
+        avg_time_taken = [metrics_per_algorithm[alg]['avg_time_taken'] for alg in algorithms]
+
+        # Define plot configurations
+        plot_configs = [
+            {
+                'data': avg_path_length,
+                'ylabel': 'Average Path Length',
+                'title': 'Average Path Length per Algorithm',
+                'filename': 'average_path_length.png',
+                'color': 'skyblue'
+            },
+            {
+                'data': avg_nodes_searched,
+                'ylabel': 'Average Nodes Searched',
+                'title': 'Average Nodes Searched per Algorithm',
+                'filename': 'average_nodes_searched.png',
+                'color': 'lightgreen'
+            },
+            {
+                'data': avg_time_taken,
+                'ylabel': 'Average Time Taken (seconds)',
+                'title': 'Average Time Taken per Algorithm',
+                'filename': 'average_time_taken.png',
+                'color': 'salmon'
+            }
+        ]
+
+        # Generate and save each plot
+        for config in plot_configs:
+            plt.figure(figsize=(10, 6))
+            bars = plt.bar(algorithms, config['data'], color=config['color'])
+            plt.xlabel('Algorithm', fontsize=12)
+            plt.ylabel(config['ylabel'], fontsize=12)
+            plt.title(config['title'], fontsize=14)
+            plt.xticks(rotation=45, ha='right', fontsize=10)
+            plt.yticks(fontsize=10)
+            plt.tight_layout()
+
+            # Add value labels on top of each bar
+            for bar in bars:
+                height = bar.get_height()
+                if height is not None:
+                    plt.text(bar.get_x() + bar.get_width() / 2, height, f'{height:.2f}',
+                             ha='center', va='bottom', fontsize=10)
+
+            # Save the plot as a PNG file
+            plot_path = os.path.join(plots_dir, config['filename'])
+            plt.savefig(plot_path, dpi=300)
+            plt.close()
+
+        # Inform the user that plots have been saved
+        QMessageBox.information(
+            self,
+            "Benchmark Plots Saved",
+            f"Benchmark plots have been saved in the directory:\n{plots_dir}"
+        )
 
     def run_astar(self, start, end, diagonal_neighbors=False, visualize=True):
         open_set = []
