@@ -3,6 +3,7 @@ import heapq
 import pandas as pd
 import random
 from math import sqrt
+from datetime import datetime
 import matplotlib.pyplot as plt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsScene, QGraphicsView, QGraphicsRectItem,
@@ -1418,33 +1419,43 @@ class WarehouseVisualizer(QMainWindow):
         if not os.path.exists(plots_dir):
             os.makedirs(plots_dir)
 
+        # Generate timestamp in a safe format for filenames
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # e.g., "2024-12-01_15-30-45"
+
+        # Get graph size from the current grid_size
+        graph_size = f"{self.grid_size}x{self.grid_size}"  # e.g., "12x12"
+
+        # *** New lines added here to include layout_type ***
+        layout_type = self.layout_dropdown.currentText().replace(" ", "_")  # e.g., "Vertical_Aisles"
+        # *** End of new lines ***
+
         # Extract data for plotting
         algorithms = list(metrics_per_algorithm.keys())
         avg_path_length = [metrics_per_algorithm[alg]['avg_path_length'] for alg in algorithms]
         avg_nodes_searched = [metrics_per_algorithm[alg]['avg_nodes_searched'] for alg in algorithms]
         avg_time_taken = [metrics_per_algorithm[alg]['avg_time_taken'] for alg in algorithms]
 
-        # Define plot configurations
+        # Define plot configurations with updated filenames including layout_type
         plot_configs = [
             {
                 'data': avg_path_length,
                 'ylabel': 'Average Path Length',
                 'title': 'Average Path Length per Algorithm',
-                'filename': 'average_path_length.png',
+                'filename': f'average_path_length_{graph_size}_{layout_type}_{timestamp}.png',
                 'color': 'skyblue'
             },
             {
                 'data': avg_nodes_searched,
                 'ylabel': 'Average Nodes Searched',
                 'title': 'Average Nodes Searched per Algorithm',
-                'filename': 'average_nodes_searched.png',
+                'filename': f'average_nodes_searched_{graph_size}_{layout_type}_{timestamp}.png',
                 'color': 'lightgreen'
             },
             {
                 'data': avg_time_taken,
                 'ylabel': 'Average Time Taken (seconds)',
                 'title': 'Average Time Taken per Algorithm',
-                'filename': 'average_time_taken.png',
+                'filename': f'average_time_taken_{graph_size}_{layout_type}_{timestamp}.png',
                 'color': 'salmon'
             }
         ]
@@ -1464,10 +1475,21 @@ class WarehouseVisualizer(QMainWindow):
             for bar in bars:
                 height = bar.get_height()
                 if height is not None:
-                    plt.text(bar.get_x() + bar.get_width() / 2, height, f'{height:.2f}',
-                             ha='center', va='bottom', fontsize=10)
+                    # Format the label based on the type of data
+                    if "Time Taken" in config['title']:
+                        label = f'{height:.4f}'
+                    else:
+                        label = f'{height:.2f}'
+                    plt.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        height,
+                        label,
+                        ha='center',
+                        va='bottom',
+                        fontsize=10
+                    )
 
-            # Save the plot as a PNG file
+            # Save the plot as a PNG file with the updated filename
             plot_path = os.path.join(plots_dir, config['filename'])
             plt.savefig(plot_path, dpi=300)
             plt.close()
