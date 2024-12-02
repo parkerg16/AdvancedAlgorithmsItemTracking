@@ -128,21 +128,106 @@ class Node(QGraphicsRectItem):
             (node_rect.height() - text_rect.height()) / 2
         )
 
+    def detect_negative_cycle_spfa(self, x, y, new_weight):
+        """
+        Check if changing the weight of node at (x,y) to new_weight would create a negative cycle.
+        Uses SPFA (Shortest Path Faster Algorithm) for efficient negative cycle detection.
+
+        Parameters:
+            x (int): X coordinate of the node being changed
+            y (int): Y coordinate of the node being changed
+            new_weight (float): The new weight to test
+
+        Returns:
+            bool: True if a negative cycle would be created, False otherwise
+        """
+        # Store the original weight
+        original_weight = self.edge_weight
+
+        # Temporarily set the new weight
+        self.edge_weight = new_weight
+
+        # Get grid size from parent window
+        grid_size = self.parent_window.grid_size
+
+        # Initialize distance and count arrays
+        distance = {(i, j): float('inf') for i in range(grid_size) for j in range(grid_size)}
+        count = {(i, j): 0 for i in range(grid_size) for j in range(grid_size)}
+
+        # Start from the changed node
+        start = (x, y)
+        distance[start] = 0
+
+        # Initialize queue with start node
+        queue = [start]
+        in_queue = {(i, j): False for i in range(grid_size) for j in range(grid_size)}
+        in_queue[start] = True
+
+        def get_neighbors(node):
+            px, py = node
+            neighbors = []
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # 4-directional neighbors
+                nx, ny = px + dx, py + dy
+                if 0 <= nx < grid_size and 0 <= ny < grid_size:
+                    if not self.parent_window.grid[ny][nx].is_obstacle:
+                        neighbors.append((nx, ny))
+            return neighbors
+
+        # Run SPFA
+        while queue:
+            current = queue.pop(0)
+            in_queue[current] = False
+
+            # Check each neighbor
+            for next_node in get_neighbors(current):
+                weight = self.parent_window.grid[next_node[1]][next_node[0]].edge_weight
+                if distance[current] + weight < distance[next_node]:
+                    distance[next_node] = distance[current] + weight
+                    count[next_node] += 1
+
+                    # If a node has been relaxed more times than number of nodes,
+                    # we've found a negative cycle
+                    if count[next_node] >= grid_size * grid_size:
+                        # Restore original weight before returning
+                        self.edge_weight = original_weight
+                        return True
+
+                    if not in_queue[next_node]:
+                        queue.append(next_node)
+                        in_queue[next_node] = True
+
+        # Restore original weight before returning
+        self.edge_weight = original_weight
+        return False
     def set_edge_weight_color(self):
         """
-        Update the node's color based on its edge weight and update the weight label.
+        Update the node's color based on its edge weight and check for negative cycles.
         Aisle nodes retain their designated colors and are not altered by edge weights.
         """
         if not self.is_aisle:
+            # Get coordinates
+            x = int(self.pos().x() / self.parent_window.node_size)
+            y = int(self.pos().y() / self.parent_window.node_size)
+
+            # Check for negative cycles before applying the weight
+            if self.detect_negative_cycle_spfa(x, y, self.edge_weight):
+                # If a negative cycle would be created, revert the weight change
+                self.edge_weight = max(1, self.edge_weight)  # Ensure minimum weight of 1
+                QMessageBox.warning(
+                    self.parent_window,
+                    "Invalid Weight",
+                    "This weight change would create a negative cycle and has been reverted."
+                )
+
+            # Update visual appearance
             red_intensity = max(0, 255 - (self.edge_weight - 1) * 25)
-            self.setBrush(QBrush(QColor(255, red_intensity, red_intensity)))  # Gradient from red to white
+            self.setBrush(QBrush(QColor(255, red_intensity, red_intensity)))
 
             if self.weight_label:
                 self.weight_label.setPlainText(str(self.edge_weight))
                 self.update_weight_label_position()
         else:
             # For aisle nodes, ensure their color remains unchanged
-            # No action needed here since aisle colors are managed elsewhere
             pass
 
     def set_item_label(self, text):
