@@ -178,7 +178,7 @@ class Node(QGraphicsRectItem):
                 if delta_y != 0:
                     delta = delta_y / 120  # Standard scroll value
                     old_weight = self.edge_weight
-                    self.edge_weight = min(10, max(1, self.edge_weight + int(delta)))
+                    self.edge_weight = min(10, max(-10, self.edge_weight + int(delta)))
                     print(f"Edge weight changed from {old_weight} to {self.edge_weight}")
                     self.set_edge_weight_color()
                 self.last_scroll_time = current_time
@@ -550,6 +550,17 @@ class WarehouseVisualizer(QMainWindow):
         self.load_scenarios()  # Load existing scenarios into the dropdown
 
         self.show()
+
+        self.algorithm_capabilities = {
+            "A* (Manhattan Distance)": {"handles_negative": False},
+            "A* (Euclidean Distance)": {"handles_negative": False},
+            "A* (Modified Euclidean 1.2x Y Priority)": {"handles_negative": False},
+            "Dijkstra's": {"handles_negative": False},
+            "Bellman-Ford": {"handles_negative": True},
+            "SPFA": {"handles_negative": True},
+            "Johnson's": {"handles_negative": True},
+            "Johnson's with A*": {"handles_negative": True}
+        }
 
     def zoom_in(self):
         """Zoom in the view by scaling up."""
@@ -944,9 +955,31 @@ class WarehouseVisualizer(QMainWindow):
         except (IndexError, ValueError) as e:
             print(f"Error parsing selected item: {e}")
 
+    def has_negative_weights(self):
+        """Check if any edge weights in the grid are negative."""
+        for row in self.grid:
+            for node in row:
+                if node.edge_weight < 0:
+                    return True
+        return False
+
     def handle_search(self):
         """Handle search between start and end nodes."""
         # Check if start and end nodes are set
+        has_negative = self.has_negative_weights()
+        selected_algorithm = self.algorithm_dropdown.currentText()
+
+        if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
+            compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
+                                     if caps["handles_negative"]]
+            QMessageBox.warning(
+                self,
+                "Invalid Algorithm Selection",
+                f"The selected algorithm '{selected_algorithm}' cannot handle negative edge weights.\n"
+                f"Please choose one of these algorithms:\n{', '.join(compatible_algorithms)}"
+            )
+            return
+
         if not hasattr(self, 'start_node') or self.start_node is None:
             self.counter_label.setText("Start node not set.")
             return
@@ -1866,7 +1899,25 @@ class WarehouseVisualizer(QMainWindow):
 
     def run_random_benchmarks(self):
         """Run multiple benchmark runs with optionally fixed or random start nodes and save detailed metrics to a JSON file."""
+        has_negative = self.has_negative_weights()
+        if has_negative:
+            # Filter algorithms that can handle negative weights
+            compatible_algorithms = [algo for algo, caps in self.algorithm_capabilities.items()
+                                     if caps["handles_negative"]]
+
+            # Update the dropdown to only show compatible algorithms
+            self.algorithm_dropdown.clear()
+            self.algorithm_dropdown.addItems(compatible_algorithms)
+
+            QMessageBox.information(
+                self,
+                "Negative Weights Detected",
+                f"Negative weights detected in the graph.\n"
+                f"Only running algorithms that support negative weights:\n"
+                f"{', '.join(compatible_algorithms)}"
+            )
         num_runs = self.benchmark_spinbox.value()
+
 
         # Determine target nodes based on the 'all_nodes_checkbox' state
         if self.all_nodes_checkbox.isChecked():
@@ -2450,6 +2501,20 @@ class WarehouseVisualizer(QMainWindow):
                                      QMessageBox.StandardButton.No)
 
         if reply == QMessageBox.StandardButton.No:
+            return
+
+        has_negative = self.has_negative_weights()
+        selected_algorithm = self.algorithm_dropdown.currentText()
+
+        if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
+            compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
+                                     if caps["handles_negative"]]
+            QMessageBox.warning(
+                self,
+                "Invalid Algorithm Selection",
+                f"The selected algorithm '{selected_algorithm}' cannot handle negative edge weights.\n"
+                f"Please choose one of these algorithms:\n{', '.join(compatible_algorithms)}"
+            )
             return
 
         # Disable UI elements to prevent interference during the operation
