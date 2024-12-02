@@ -1698,7 +1698,7 @@ class WarehouseVisualizer(QMainWindow):
         self.save_benchmark_results(metrics_per_algorithm)
 
         # Plot and save the benchmark results
-        self.plot_benchmark_results(metrics_per_algorithm)
+        self.plot_benchmark_results(metrics_per_algorithm, 1)
 
     def display_benchmark_results(self, metrics_per_algorithm):
         """Display benchmark results for all algorithms."""
@@ -1737,8 +1737,6 @@ class WarehouseVisualizer(QMainWindow):
             num_runs (int): Number of benchmark runs.
             mode (str): Mode of benchmarking ("Single Run" or "Random Start Nodes").
         """
-        import matplotlib.pyplot as plt
-        import os
 
         # Create a directory to save plots
         plots_dir = os.path.join(self.scenario_dir, "benchmark_plots")
@@ -2041,7 +2039,7 @@ class WarehouseVisualizer(QMainWindow):
         self.clear_button.setEnabled(enabled)
         self.item_dropdown.setEnabled(enabled)
         self.zoom_in_button.setEnabled(enabled)
-        self.zoom_out_button.setEnabled(enabled)
+        self.zoom_out_button.vsetEnabled(enabled)
         self.benchmark_button.setEnabled(enabled)
         self.show_all_paths_button.setEnabled(enabled)
     # *** New Method Addition End ***
