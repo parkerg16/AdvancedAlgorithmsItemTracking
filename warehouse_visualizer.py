@@ -83,7 +83,7 @@ class Node(QGraphicsRectItem):
         self.edge_weight = 1  # Default edge weight
         self.is_aisle = False
         self.last_scroll_time = time.time()  # For throttling wheel events
-
+        self.original_aisle_color = None
         # Enable focus to capture wheel events
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsFocusable)
 
@@ -253,8 +253,12 @@ class Node(QGraphicsRectItem):
                 if self.item_label:
                     self.item_label.show()
             else:
-                # Retain original aisle color by passing the current color
-                self.set_as_aisle(self.brush().color())
+                # Use the original aisle color to reset
+                if self.original_aisle_color:
+                    self.set_as_aisle(self.original_aisle_color)
+                else:
+                    # Fallback to a default aisle color if not set
+                    self.set_as_aisle(QColor(150, 150, 250))  # Light blue
                 if self.weight_label:
                     self.weight_label.hide()
                 if self.item_label:
@@ -329,6 +333,7 @@ class Node(QGraphicsRectItem):
         Parameters:
             aisle_color (QColor): The color to set for the aisle node.
         """
+        self.original_aisle_color = aisle_color
         if self.is_start:
             self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
         elif self.is_end:
