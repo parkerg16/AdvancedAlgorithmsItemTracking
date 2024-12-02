@@ -610,6 +610,14 @@ class WarehouseVisualizer(QMainWindow):
         self.start_node = None
         self.end_node = None
 
+        # *** Clear Cached Johnson's Graph ***
+        if hasattr(self, 'johnsons_graph'):
+            del self.johnsons_graph
+            print("Cleared cached Johnson's graph during clear_all.")
+        if hasattr(self, 'last_grid_state'):
+            del self.last_grid_state
+            print("Cleared last grid state during clear_all.")
+
     def update_spacing(self):
         """Update the spacing between aisles based on dropdown selection."""
         self.spacing = int(self.spacing_dropdown.currentText())
@@ -636,6 +644,14 @@ class WarehouseVisualizer(QMainWindow):
         """Generate the warehouse layout with adjustable aisle spacing and label items."""
         try:
             self.clear_all()
+
+            # *** Clear Cached Johnson's Graph ***
+            if hasattr(self, 'johnsons_graph'):
+                del self.johnsons_graph
+                print("Cleared cached Johnson's graph.")
+            if hasattr(self, 'last_grid_state'):
+                del self.last_grid_state
+                print("Cleared last grid state.")
 
             # Generate warehouse data
             warehouse_data = generate_warehouse_data(
@@ -989,7 +1005,7 @@ class WarehouseVisualizer(QMainWindow):
 
     def run_johnsons(self, start, end, diagonal_neighbors=False, visualize=True):
         """
-        Johnson's algorithm implementation that properly handles paths to aisle nodes.
+        Johnson's algorithm implementation that properly handles paths to aisle nodes with visualization.
         """
 
         def get_neighbors_for_reweighting(node):
@@ -1017,12 +1033,14 @@ class WarehouseVisualizer(QMainWindow):
         # Validate start and end are not obstacles
         if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
             if visualize:
+                self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Invalid start or end position")
             return None, (mandatory_visits, pathfinding_visits)
 
         # PHASE 1: Graph Preprocessing (only if needed)
         if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
             if visualize:
+                self.counter_label.setStyleSheet("color: green;")
                 self.counter_label.setText("First run: Creating reweighted graph using Bellman-Ford")
                 QApplication.processEvents()
 
@@ -1041,6 +1059,7 @@ class WarehouseVisualizer(QMainWindow):
                 mandatory_visits += 1
                 if visualize:
                     self.grid[node[1]][node[0]].set_visited()
+                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(70, 130, 180)))  # Blue for graph building
                     self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
                     QApplication.processEvents()
 
@@ -1051,7 +1070,7 @@ class WarehouseVisualizer(QMainWindow):
                     if neighbor in current_nodes:
                         modified_graph[node].append((neighbor, weight))
                 if visualize:
-                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(147, 112, 219)))
+                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(70, 130, 180)))  # Blue for graph building
                     QApplication.processEvents()
 
             # Step 2: Run Bellman-Ford
@@ -1068,7 +1087,7 @@ class WarehouseVisualizer(QMainWindow):
                             if v != virtual_node:
                                 mandatory_visits += 1
                                 if visualize:
-                                    self.grid[v[1]][v[0]].setBrush(QBrush(QColor(255, 165, 0)))
+                                    self.grid[v[1]][v[0]].setBrush(QBrush(QColor(255, 165, 0)))  # Orange for relaxation
                                     self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
                                     QApplication.processEvents()
                 if not updates:
@@ -1082,7 +1101,7 @@ class WarehouseVisualizer(QMainWindow):
                         new_weight = weight + h_values[u] - h_values[v]
                         self.johnsons_graph[u].append((v, new_weight))
                 if visualize:
-                    self.grid[u[1]][u[0]].setBrush(QBrush(QColor(147, 112, 219)))
+                    self.grid[u[1]][u[0]].setBrush(QBrush(QColor(147, 112, 219)))  # Purple for reweighted graph
                     QApplication.processEvents()
 
         else:
@@ -1096,6 +1115,7 @@ class WarehouseVisualizer(QMainWindow):
                 return self.run_johnsons(start, end, diagonal_neighbors, visualize)
 
             if visualize:
+                self.counter_label.setStyleSheet("color: green;")
                 self.counter_label.setText("Using existing reweighted graph - no preprocessing needed")
                 QApplication.processEvents()
 
@@ -1109,10 +1129,12 @@ class WarehouseVisualizer(QMainWindow):
         # PHASE 2: Pathfinding using Dijkstra's
         if start not in self.johnsons_graph or end not in self.johnsons_graph:
             if visualize:
+                self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Start or end node not in cached graph")
             return None, (mandatory_visits, pathfinding_visits)
 
         if visualize:
+            self.counter_label.setStyleSheet("color: green;")
             self.counter_label.setText("Finding path using Dijkstra's")
             QApplication.processEvents()
 
@@ -1137,6 +1159,8 @@ class WarehouseVisualizer(QMainWindow):
 
             if visualize and current != start and current != end:
                 self.grid[current[1]][current[0]].set_visited()
+                self.grid[current[1]][current[0]].setBrush(
+                    QBrush(QColor(0, 255, 0)))  # Green for visited in pathfinding
                 self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits} (using cached graph)")
                 QApplication.processEvents()
 
@@ -1169,10 +1193,14 @@ class WarehouseVisualizer(QMainWindow):
                 for node in path:
                     if node != start and node != end:
                         self.grid[node[1]][node[0]].set_path()
+                        self.grid[node[1]][node[0]].setBrush(QBrush(QColor(0, 0, 255)))  # Blue for path
                         QApplication.processEvents()
 
             return path, (mandatory_visits, pathfinding_visits)
 
+        if visualize:
+            self.counter_label.setStyleSheet("color: red;")
+            self.counter_label.setText("No path found")
         return None, (mandatory_visits, pathfinding_visits)
 
     def run_johnsons_astar(self, start, end, diagonal_neighbors=False, visualize=True):
