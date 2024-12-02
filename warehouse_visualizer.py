@@ -969,6 +969,17 @@ class WarehouseVisualizer(QMainWindow):
         has_negative = self.has_negative_weights()
         selected_algorithm = self.algorithm_dropdown.currentText()
 
+        current_weights_state = {(x, y): self.grid[y][x].edge_weight
+                                 for x in range(self.grid_size)
+                                 for y in range(self.grid_size)}
+
+        if hasattr(self, 'last_weights_state') and self.last_weights_state != current_weights_state:
+            if hasattr(self, 'johnsons_graph'):
+                delattr(self, 'johnsons_graph')
+                print("Cleared cached Johnson's graph due to edge weight changes.")
+
+        self.last_weights_state = current_weights_state
+
         if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
             compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
                                      if caps["handles_negative"]]
