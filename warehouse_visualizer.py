@@ -225,10 +225,18 @@ class Node(QGraphicsRectItem):
             if self.item_label:
                 self.item_label.hide()  # Hide item label when node becomes a barrier
 
+    def set_relaxed(self):
+        """Mark the node as relaxed (orange) during Bellman-Ford relaxation."""
+        if not self.is_aisle:
+            self.setBrush(QBrush(QColor(255, 165, 0)))  # Orange for relaxation
+        else:
+            if not self.is_start and not self.is_end:
+                self.set_as_aisle(self.brush().color())
+
     def set_visited(self):
         """Mark the node as visited (green) unless it's an aisle."""
         if not self.is_aisle:
-            self.setBrush(QBrush(QColor(0, 255, 0)))  # Green when visited
+            self.setBrush(QBrush(QColor(144, 238, 144)))
         else:
             if not self.is_start and not self.is_end:
                 self.set_as_aisle(self.brush().color())  # Retain aisle color
@@ -490,7 +498,7 @@ class WarehouseVisualizer(QMainWindow):
         layout.addWidget(QLabel("Select Algorithm:", self))
         layout.addWidget(self.algorithm_dropdown)
         layout.addWidget(self.diagonal_checkbox)
-
+        self.algorithm_dropdown.currentIndexChanged.connect(self.on_algorithm_changed)
         # Node setting buttons
         layout.addWidget(self.start_button)
         layout.addWidget(self.end_button)
@@ -562,6 +570,29 @@ class WarehouseVisualizer(QMainWindow):
             "Johnson's with A*": {"handles_negative": True}
         }
 
+    def on_algorithm_changed(self, index):
+        """Handle algorithm selection change."""
+        # Reset grid while preserving start, end, and barriers
+        self.reset_grid()
+
+        # Clear any cached Johnson's graph if it exists
+        if hasattr(self, 'johnsons_graph'):
+            delattr(self, 'johnsons_graph')
+            print("Cleared cached Johnson's graph due to algorithm change.")
+
+        # Check for negative weights compatibility
+        has_negative = self.has_negative_weights()
+        selected_algorithm = self.algorithm_dropdown.currentText()
+
+        if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
+            compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
+                                     if caps["handles_negative"]]
+            QMessageBox.warning(
+                self,
+                "Invalid Algorithm Selection",
+                f"The selected algorithm '{selected_algorithm}' cannot handle negative edge weights.\n"
+                f"Please choose one of these algorithms:\n{', '.join(compatible_algorithms)}"
+            )
     def zoom_in(self):
         """Zoom in the view by scaling up."""
         self.view.scale(1.2, 1.2)  # Scale up by 20%
@@ -613,6 +644,7 @@ class WarehouseVisualizer(QMainWindow):
             for node in row:
                 if not node.is_start and not node.is_end and not node.is_obstacle:
                     node.reset()
+        self.counter_label.setText("Nodes Searched: 0")
 
     def clear_all(self):
         """Clear the entire grid, including start, end, and barriers."""
@@ -1054,7 +1086,7 @@ class WarehouseVisualizer(QMainWindow):
 
     def run_johnsons(self, start, end, diagonal_neighbors=False, visualize=True):
         """
-        Johnson's algorithm implementation that properly handles paths to aisle nodes with visualization.
+        Johnson's algorithm implementation with improved negative weight handling.
         """
 
         def get_neighbors_for_reweighting(node):
@@ -1088,73 +1120,92 @@ class WarehouseVisualizer(QMainWindow):
 
         # PHASE 1: Graph Preprocessing (only if needed)
         if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
-            if visualize:
-                self.counter_label.setStyleSheet("color: green;")
-                self.counter_label.setText("First run: Creating reweighted graph using Bellman-Ford")
-                QApplication.processEvents()
-
-            # Save current grid state (only care about obstacles)
-            self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
-                                    for x in range(self.grid_size)
-                                    for y in range(self.grid_size)}
-
-            # Step 1: Create graph with virtual node
-            virtual_node = (-1, -1)
-            modified_graph = {virtual_node: []}
-
-            # Initialize all nodes (including aisles)
-            for node in current_nodes:
-                modified_graph[node] = []
-                mandatory_visits += 1
+            try:
                 if visualize:
-                    self.grid[node[1]][node[0]].set_visited()
-                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(70, 130, 180)))  # Blue for graph building
-                    self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
+                    self.counter_label.setStyleSheet("color: green;")
+                    self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
                     QApplication.processEvents()
 
-            # Add edges, considering aisle nodes
-            for node in current_nodes:
-                modified_graph[virtual_node].append((node, 0))
-                for neighbor, weight in get_neighbors_for_reweighting(node):
-                    if neighbor in current_nodes:
-                        modified_graph[node].append((neighbor, weight))
-                if visualize:
-                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(70, 130, 180)))  # Blue for graph building
-                    QApplication.processEvents()
+                # Save current grid state
+                self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
+                                        for x in range(self.grid_size)
+                                        for y in range(self.grid_size)}
 
-            # Step 2: Run Bellman-Ford
-            h_values = {node: float('inf') for node in current_nodes}
-            h_values[virtual_node] = 0
+                # Step 1: Create graph with virtual node
+                virtual_node = (-1, -1)
+                modified_graph = {virtual_node: []}
 
-            for i in range(len(current_nodes)):
-                updates = False
+                # Initialize all nodes (including aisles)
+                for node in current_nodes:
+                    modified_graph[node] = []
+                    mandatory_visits += 1
+                    if visualize and node != start and node != end:  # Preserve start node color
+                        self.grid[node[1]][node[0]].set_visited()
+                        self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
+                        QApplication.processEvents()
+
+                # Add edges, considering aisle nodes
+                for node in current_nodes:
+                    modified_graph[virtual_node].append((node, 0))
+                    for neighbor, weight in get_neighbors_for_reweighting(node):
+                        if neighbor in current_nodes:
+                            modified_graph[node].append((neighbor, weight))
+
+                # Step 2: Run modified Bellman-Ford for reweighting
+                h_values = {node: float('inf') for node in current_nodes}
+                h_values[virtual_node] = 0
+
+                # First pass: |V|-1 iterations of relaxation
+                for i in range(len(current_nodes)):
+                    updates = False
+                    for u in modified_graph:
+                        for v, weight in modified_graph[u]:
+                            if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
+                                h_values[v] = h_values[u] + weight
+                                updates = True
+                                if v != virtual_node:
+                                    mandatory_visits += 1
+                                    if visualize and v != start and v != end :  # Preserve start node color
+                                        self.grid[v[1]][v[0]].set_relaxed()
+                                        self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
+                                        QApplication.processEvents()
+                    if not updates:
+                        break
+
+                # Second pass: Check for negative cycles
                 for u in modified_graph:
                     for v, weight in modified_graph[u]:
                         if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
-                            h_values[v] = h_values[u] + weight
-                            updates = True
-                            if v != virtual_node:
-                                mandatory_visits += 1
-                                if visualize:
-                                    self.grid[v[1]][v[0]].setBrush(QBrush(QColor(255, 165, 0)))  # Orange for relaxation
-                                    self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
-                                    QApplication.processEvents()
-                if not updates:
-                    break
+                            if visualize:
+                                self.counter_label.setStyleSheet("color: red;")
+                                self.counter_label.setText("Negative cycle detected - cannot proceed")
+                                QApplication.processEvents()
+                            return None, (mandatory_visits, pathfinding_visits)
 
-            # Step 3: Create and store reweighted graph
-            self.johnsons_graph = {node: [] for node in current_nodes}
-            for u in current_nodes:
-                for v, weight in modified_graph[u]:
-                    if v != virtual_node:
-                        new_weight = weight + h_values[u] - h_values[v]
-                        self.johnsons_graph[u].append((v, new_weight))
+                # Step 3: Create reweighted graph with validation
+                self.johnsons_graph = {node: [] for node in current_nodes}
+                for u in current_nodes:
+                    for v, weight in modified_graph[u]:
+                        if v != virtual_node:
+                            new_weight = weight + h_values[u] - h_values[v]
+                            epsilon = 1e-10
+                            if new_weight < -epsilon:
+                                if visualize:
+                                    self.counter_label.setStyleSheet("color: red;")
+                                    self.counter_label.setText("Reweighting failed - invalid negative weight")
+                                    QApplication.processEvents()
+                                return None, (mandatory_visits, pathfinding_visits)
+                            new_weight = max(0, new_weight)
+                            self.johnsons_graph[u].append((v, new_weight))
+
+            except Exception as e:
                 if visualize:
-                    self.grid[u[1]][u[0]].setBrush(QBrush(QColor(147, 112, 219)))  # Purple for reweighted graph
+                    self.counter_label.setStyleSheet("color: red;")
+                    self.counter_label.setText(f"Error in Johnson's preprocessing: {str(e)}")
                     QApplication.processEvents()
+                return None, (mandatory_visits, pathfinding_visits)
 
         else:
-            # Check if grid obstacles have changed
             current_grid_state = {(x, y): self.grid[y][x].is_obstacle
                                   for x in range(self.grid_size)
                                   for y in range(self.grid_size)}
@@ -1162,11 +1213,6 @@ class WarehouseVisualizer(QMainWindow):
             if current_grid_state != self.last_grid_state:
                 delattr(self, 'johnsons_graph')
                 return self.run_johnsons(start, end, diagonal_neighbors, visualize)
-
-            if visualize:
-                self.counter_label.setStyleSheet("color: green;")
-                self.counter_label.setText("Using existing reweighted graph - no preprocessing needed")
-                QApplication.processEvents()
 
         # Reset visualization before pathfinding
         if visualize:
@@ -1182,12 +1228,6 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText("Start or end node not in cached graph")
             return None, (mandatory_visits, pathfinding_visits)
 
-        if visualize:
-            self.counter_label.setStyleSheet("color: green;")
-            self.counter_label.setText("Finding path using Dijkstra's")
-            QApplication.processEvents()
-
-        # Run Dijkstra's
         distances = {node: float('inf') for node in self.johnsons_graph}
         distances[start] = 0
         predecessors = {node: None for node in self.johnsons_graph}
@@ -1208,14 +1248,11 @@ class WarehouseVisualizer(QMainWindow):
 
             if visualize and current != start and current != end:
                 self.grid[current[1]][current[0]].set_visited()
-                self.grid[current[1]][current[0]].setBrush(
-                    QBrush(QColor(0, 255, 0)))  # Green for visited in pathfinding
-                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits} (using cached graph)")
+                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
                 QApplication.processEvents()
 
             for neighbor, weight in self.johnsons_graph[current]:
                 if neighbor not in visited:
-                    # Check if we can traverse to this neighbor
                     can_traverse = (
                             not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
                             or neighbor == end  # End node (can be aisle)
@@ -1235,14 +1272,13 @@ class WarehouseVisualizer(QMainWindow):
             current = end
             while current is not None:
                 path.append(current)
-                current = predecessors.get(current)
+                current = predecessors[current]
             path.reverse()
 
             if visualize:
                 for node in path:
                     if node != start and node != end:
                         self.grid[node[1]][node[0]].set_path()
-                        self.grid[node[1]][node[0]].setBrush(QBrush(QColor(0, 0, 255)))  # Blue for path
                         QApplication.processEvents()
 
             return path, (mandatory_visits, pathfinding_visits)
@@ -1254,7 +1290,7 @@ class WarehouseVisualizer(QMainWindow):
 
     def run_johnsons_astar(self, start, end, diagonal_neighbors=False, visualize=True):
         """
-        Johnson's algorithm implementation that uses A* for pathfinding after reweighting.
+        Johnson's algorithm implementation with A* pathfinding after reweighting.
         """
 
         def get_neighbors_for_reweighting(node):
@@ -1282,76 +1318,98 @@ class WarehouseVisualizer(QMainWindow):
         # Validate start and end are not obstacles
         if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
             if visualize:
+                self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Invalid start or end position")
             return None, (mandatory_visits, pathfinding_visits)
 
         # PHASE 1: Graph Preprocessing (only if needed)
         if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
-            if visualize:
-                self.counter_label.setText("First run: Creating reweighted graph using Bellman-Ford")
-                QApplication.processEvents()
-
-            # Save current grid state (only care about obstacles)
-            self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
-                                    for x in range(self.grid_size)
-                                    for y in range(self.grid_size)}
-
-            # Step 1: Create graph with virtual node
-            virtual_node = (-1, -1)
-            modified_graph = {virtual_node: []}
-
-            # Initialize all nodes (including aisles)
-            for node in current_nodes:
-                modified_graph[node] = []
-                mandatory_visits += 1
+            try:
                 if visualize:
-                    self.grid[node[1]][node[0]].set_visited()
-                    self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
+                    self.counter_label.setStyleSheet("color: green;")
+                    self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
                     QApplication.processEvents()
 
-            # Add edges, considering aisle nodes
-            for node in current_nodes:
-                modified_graph[virtual_node].append((node, 0))
-                for neighbor, weight in get_neighbors_for_reweighting(node):
-                    if neighbor in current_nodes:
-                        modified_graph[node].append((neighbor, weight))
-                if visualize:
-                    self.grid[node[1]][node[0]].setBrush(QBrush(QColor(147, 112, 219)))
-                    QApplication.processEvents()
+                # Save current grid state
+                self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
+                                        for x in range(self.grid_size)
+                                        for y in range(self.grid_size)}
 
-            # Step 2: Run Bellman-Ford
-            h_values = {node: float('inf') for node in current_nodes}
-            h_values[virtual_node] = 0
+                # Step 1: Create graph with virtual node
+                virtual_node = (-1, -1)
+                modified_graph = {virtual_node: []}
 
-            for i in range(len(current_nodes)):
-                updates = False
+                # Initialize all nodes (including aisles)
+                for node in current_nodes:
+                    modified_graph[node] = []
+                    mandatory_visits += 1
+                    if visualize and node != start and node != end: # Preserve start node color
+                        self.grid[node[1]][node[0]].set_visited()
+                        self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
+                        QApplication.processEvents()
+
+                # Add edges, considering aisle nodes
+                for node in current_nodes:
+                    modified_graph[virtual_node].append((node, 0))
+                    for neighbor, weight in get_neighbors_for_reweighting(node):
+                        if neighbor in current_nodes:
+                            modified_graph[node].append((neighbor, weight))
+
+                # Step 2: Run modified Bellman-Ford for reweighting
+                h_values = {node: float('inf') for node in current_nodes}
+                h_values[virtual_node] = 0
+
+                # First pass: |V|-1 iterations of relaxation
+                for i in range(len(current_nodes)):
+                    updates = False
+                    for u in modified_graph:
+                        for v, weight in modified_graph[u]:
+                            if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
+                                h_values[v] = h_values[u] + weight
+                                updates = True
+                                if v != virtual_node:
+                                    mandatory_visits += 1
+                                    if visualize and v != start and v != end:  # Preserve start node color
+                                        self.grid[v[1]][v[0]].set_relaxed()
+                                        self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
+                                        QApplication.processEvents()
+                    if not updates:
+                        break
+
+                # Second pass: Check for negative cycles
                 for u in modified_graph:
                     for v, weight in modified_graph[u]:
                         if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
-                            h_values[v] = h_values[u] + weight
-                            updates = True
-                            if v != virtual_node:
-                                mandatory_visits += 1
-                                if visualize:
-                                    self.grid[v[1]][v[0]].setBrush(QBrush(QColor(255, 165, 0)))
-                                    self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
-                                    QApplication.processEvents()
-                if not updates:
-                    break
+                            if visualize:
+                                self.counter_label.setStyleSheet("color: red;")
+                                self.counter_label.setText("Negative cycle detected - cannot proceed")
+                                QApplication.processEvents()
+                            return None, (mandatory_visits, pathfinding_visits)
 
-            # Step 3: Create and store reweighted graph
-            self.johnsons_graph = {node: [] for node in current_nodes}
-            for u in current_nodes:
-                for v, weight in modified_graph[u]:
-                    if v != virtual_node:
-                        new_weight = weight + h_values[u] - h_values[v]
-                        self.johnsons_graph[u].append((v, new_weight))
+                # Step 3: Create reweighted graph with validation
+                self.johnsons_graph = {node: [] for node in current_nodes}
+                for u in current_nodes:
+                    for v, weight in modified_graph[u]:
+                        if v != virtual_node:
+                            new_weight = weight + h_values[u] - h_values[v]
+                            epsilon = 1e-10
+                            if new_weight < -epsilon:
+                                if visualize:
+                                    self.counter_label.setStyleSheet("color: red;")
+                                    self.counter_label.setText("Reweighting failed - invalid negative weight")
+                                    QApplication.processEvents()
+                                return None, (mandatory_visits, pathfinding_visits)
+                            new_weight = max(0, new_weight)
+                            self.johnsons_graph[u].append((v, new_weight))
+
+            except Exception as e:
                 if visualize:
-                    self.grid[u[1]][u[0]].setBrush(QBrush(QColor(147, 112, 219)))
+                    self.counter_label.setStyleSheet("color: red;")
+                    self.counter_label.setText(f"Error in Johnson's preprocessing: {str(e)}")
                     QApplication.processEvents()
+                return None, (mandatory_visits, pathfinding_visits)
 
         else:
-            # Check if grid obstacles have changed
             current_grid_state = {(x, y): self.grid[y][x].is_obstacle
                                   for x in range(self.grid_size)
                                   for y in range(self.grid_size)}
@@ -1360,10 +1418,6 @@ class WarehouseVisualizer(QMainWindow):
                 delattr(self, 'johnsons_graph')
                 return self.run_johnsons_astar(start, end, diagonal_neighbors, visualize)
 
-            if visualize:
-                self.counter_label.setText("Using existing reweighted graph - no preprocessing needed")
-                QApplication.processEvents()
-
         # Reset visualization before pathfinding
         if visualize:
             for y in range(self.grid_size):
@@ -1371,26 +1425,24 @@ class WarehouseVisualizer(QMainWindow):
                     if (x, y) != start and (x, y) != end:
                         self.grid[y][x].reset()
 
-        # PHASE 2: Pathfinding using A* instead of Dijkstra's
+        # PHASE 2: A* Pathfinding
         if start not in self.johnsons_graph or end not in self.johnsons_graph:
             if visualize:
+                self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Start or end node not in cached graph")
             return None, (mandatory_visits, pathfinding_visits)
 
-        if visualize:
-            self.counter_label.setText("Finding path using A* with reweighted edges")
-            QApplication.processEvents()
+        g_score = {node: float('inf') for node in self.johnsons_graph}
+        g_score[start] = 0
+        f_score = {node: float('inf') for node in self.johnsons_graph}
+        f_score[start] = self.heuristic(start, end, "Manhattan Distance")
 
-        # Run A*
-        open_set = []
-        heapq.heappush(open_set, (0, start))
-        came_from = {}
-        g_score = {start: 0}
-        f_score = {start: self.heuristic(start, end, "Manhattan Distance")}
+        pq = [(f_score[start], start)]
+        predecessors = {node: None for node in self.johnsons_graph}
         visited = set()
 
-        while open_set:
-            current_f, current = heapq.heappop(open_set)
+        while pq:
+            current_f, current = heapq.heappop(pq)
 
             if current in visited:
                 continue
@@ -1403,12 +1455,11 @@ class WarehouseVisualizer(QMainWindow):
 
             if visualize and current != start and current != end:
                 self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits} (using cached graph)")
+                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
                 QApplication.processEvents()
 
             for neighbor, weight in self.johnsons_graph[current]:
                 if neighbor not in visited:
-                    # Check if we can traverse to this neighbor
                     can_traverse = (
                             not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
                             or neighbor == end  # End node (can be aisle)
@@ -1416,20 +1467,20 @@ class WarehouseVisualizer(QMainWindow):
                     )
 
                     if can_traverse:
-                        tentative_g_score = g_score.get(current, float('inf')) + weight
-                        if tentative_g_score < g_score.get(neighbor, float('inf')):
-                            came_from[neighbor] = current
+                        tentative_g_score = g_score[current] + weight
+                        if tentative_g_score < g_score[neighbor]:
+                            predecessors[neighbor] = current
                             g_score[neighbor] = tentative_g_score
                             f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end, "Manhattan Distance")
-                            heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                            heapq.heappush(pq, (f_score[neighbor], neighbor))
 
         # Reconstruct path
-        if end in came_from or start == end:
+        if g_score[end] != float('inf'):
             path = []
             current = end
             while current is not None:
                 path.append(current)
-                current = came_from.get(current)
+                current = predecessors[current]
             path.reverse()
 
             if visualize:
@@ -1440,8 +1491,10 @@ class WarehouseVisualizer(QMainWindow):
 
             return path, (mandatory_visits, pathfinding_visits)
 
+        if visualize:
+            self.counter_label.setStyleSheet("color: red;")
+            self.counter_label.setText("No path found")
         return None, (mandatory_visits, pathfinding_visits)
-
     def bellman_ford_for_johnsons(self, graph, source):
         """Helper function for Johnson's algorithm to compute h values."""
         distances = {node: float('inf') for node in graph}
