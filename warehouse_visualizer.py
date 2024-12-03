@@ -199,36 +199,47 @@ class Node(QGraphicsRectItem):
         # Restore original weight before returning
         self.edge_weight = original_weight
         return False
-    def set_edge_weight_color(self):
-        """
-        Update the node's color based on its edge weight and check for negative cycles.
-        Aisle nodes retain their designated colors and are not altered by edge weights.
-        """
-        if not self.is_aisle:
-            # Get coordinates
-            x = int(self.pos().x() / self.parent_window.node_size)
-            y = int(self.pos().y() / self.parent_window.node_size)
 
-            # Check for negative cycles before applying the weight
-            if self.detect_negative_cycle_spfa(x, y, self.edge_weight):
-                # If a negative cycle would be created, revert the weight change
-                self.edge_weight = max(1, self.edge_weight)  # Ensure minimum weight of 1
+    def set_edge_weight(self, new_weight):
+        """
+        Set edge weight and check for negative cycles only under specific conditions.
+        """
+        x = int(self.pos().x() / self.parent_window.node_size)
+        y = int(self.pos().y() / self.parent_window.node_size)
+
+        # Trigger cycle check only if necessary
+        if (
+                new_weight < 0 and
+                not self.is_aisle and
+                not self.parent_window.is_generating_warehouse and
+                (self.edge_weight >= 0 or new_weight < self.edge_weight)  # If newly negative or decreasing further
+        ):
+            # Check for negative cycles
+            if self.detect_negative_cycle_spfa(x, y, new_weight):
+                # Revert to a safe value if a cycle is detected
+                new_weight = max(1, self.edge_weight)
                 QMessageBox.warning(
                     self.parent_window,
                     "Invalid Weight",
                     "This weight change would create a negative cycle and has been reverted."
                 )
 
-            # Update visual appearance
+        # Update the edge weight and appearance
+        self.edge_weight = new_weight
+        self.update_color_from_weight()
+
+    def update_color_from_weight(self):
+        """
+        Update node color based on its current edge weight without cycle detection.
+        """
+        if not self.is_aisle:
             red_intensity = max(0, 255 - (self.edge_weight - 1) * 25)
-            self.setBrush(QBrush(QColor(255, red_intensity, red_intensity)))
+            self._color = QColor(255, red_intensity, red_intensity)
+            self.setBrush(QBrush(self._color))
 
             if self.weight_label:
                 self.weight_label.setPlainText(str(self.edge_weight))
                 self.update_weight_label_position()
-        else:
-            # For aisle nodes, ensure their color remains unchanged
-            pass
 
     def set_item_label(self, text):
         """
@@ -251,24 +262,18 @@ class Node(QGraphicsRectItem):
     def wheelEvent(self, event):
         """
         Handle mouse wheel events to adjust the edge weight with throttling.
-
-        Parameters:
-            event (QWheelEvent): The wheel event.
         """
         try:
             current_time = time.time()
             if current_time - self.last_scroll_time > 0.1:  # 100ms delay
-                # Using the deprecated delta() method as per requirement
                 delta_y = event.delta()
                 if delta_y != 0:
                     delta = delta_y / 120  # Standard scroll value
                     old_weight = self.edge_weight
-                    self.edge_weight = min(10, max(-10, self.edge_weight + int(delta)))
+                    new_weight = min(10, max(-10, self.edge_weight + int(delta)))
+                    self.set_edge_weight(new_weight)  # Use new method
                     print(f"Edge weight changed from {old_weight} to {self.edge_weight}")
-                    self.set_edge_weight_color()
                 self.last_scroll_time = current_time
-        except AttributeError as ae:
-            print(f"AttributeError in wheelEvent: {ae}")
         except Exception as e:
             print(f"Error in wheelEvent: {e}")
 
@@ -321,11 +326,10 @@ class Node(QGraphicsRectItem):
     def set_visited(self):
         """Mark the node as visited (green) unless it's an aisle."""
         if not self.is_aisle:
-            self.setBrush(QBrush(QColor(144, 238, 144)))
+            self.setBrush(QBrush(QColor(144, 238, 144)))  # Light green
         else:
             if not self.is_start and not self.is_end:
-                self.set_as_aisle(self.brush().color())  # Retain aisle color
-            # If it's start or end, do not change the color
+                self.set_as_aisle(self.brush().color())
 
     def set_path(self):
         """Mark the node as part of the path (blue) unless it's an aisle."""
@@ -337,37 +341,21 @@ class Node(QGraphicsRectItem):
             # If it's start or end, do not change the color
 
     def reset(self):
-        """Reset the node to its default visual state without altering edge_weight."""
+        """Reset the node to its default visual state."""
         if not self.is_obstacle and not self.is_start and not self.is_end:
             if not self.is_aisle:
-                self.setBrush(QBrush(QColor(255, 255, 255)))  # White for reset
+                self._color = QColor(255, 255, 255)  # White
+                self.setBrush(QBrush(self._color))
                 if self.weight_label:
                     self.weight_label.show()
                 if self.item_label:
                     self.item_label.show()
+                self.update_color_from_weight()  # Update color based on current weight
             else:
-                # Use the original aisle color to reset
                 if self.original_aisle_color:
                     self.set_as_aisle(self.original_aisle_color)
                 else:
-                    # Fallback to a default aisle color if not set
-                    self.set_as_aisle(QColor(150, 150, 250))  # Light blue
-                if self.weight_label:
-                    self.weight_label.hide()
-                if self.item_label:
-                    self.item_label.hide()
-        else:
-            # Maintain state for start, end, and barriers
-            if self.is_start:
-                self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
-            elif self.is_end:
-                self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
-            elif self.is_obstacle:
-                self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
-
-        # Update the visual representation based on the current edge_weight
-        if not self.is_aisle:
-            self.set_edge_weight_color()
+                    self.set_as_aisle(QColor(150, 150, 250))
 
     def set_as_start(self):
         """
@@ -443,6 +431,7 @@ class Node(QGraphicsRectItem):
 class WarehouseVisualizer(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.is_generating_warehouse = False
 
         self.num_aisles = 5  # Default number of aisles
         self.max_shelves_per_aisle = 10  # Default max shelves per aisle
@@ -776,6 +765,7 @@ class WarehouseVisualizer(QMainWindow):
     def generate_warehouse_layout(self, orientation='vertical'):
         """Generate the warehouse layout with adjustable aisle spacing and label items."""
         try:
+            self.is_generating_warehouse = True
             self.clear_all()
 
             # *** Clear Cached Johnson's Graph ***
@@ -914,6 +904,9 @@ class WarehouseVisualizer(QMainWindow):
 
         except Exception as e:
             print(f"Error in generate_warehouse_layout: {e}")
+        finally:
+            # Reset the flag after generation is complete
+            self.is_generating_warehouse = False
 
     def set_mode_start(self):
         """Set mode to start node selection."""
