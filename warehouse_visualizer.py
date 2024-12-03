@@ -1863,20 +1863,36 @@ class WarehouseVisualizer(QMainWindow):
         """Get valid neighboring nodes and their edge weights."""
         (x, y) = node
 
-        four_neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        eight_neighbors = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
+        # Define orthogonal and diagonal neighbors with their respective costs
+        four_neighbors = [
+            ((-1, 0), 1.0),  # Left
+            ((1, 0), 1.0),  # Right
+            ((0, -1), 1.0),  # Up
+            ((0, 1), 1.0)  # Down
+        ]
 
+        eight_neighbors = [
+            ((-1, -1), 1.414),  # Up-Left (√2)
+            ((1, -1), 1.414),  # Up-Right
+            ((-1, 1), 1.414),  # Down-Left
+            ((1, 1), 1.414)  # Down-Right
+        ]
+
+        # Start with orthogonal neighbors
         potential_neighbors = four_neighbors
+        # Add diagonal neighbors if enabled
         if diagonal_neighbors:
-            potential_neighbors += eight_neighbors
+            potential_neighbors.extend(eight_neighbors)
 
         neighbors = []
-        for dx, dy in potential_neighbors:
+        for (dx, dy), base_cost in potential_neighbors:
             nx, ny = x + dx, y + dy
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
                 neighbor_coords = (nx, ny)
                 neighbor_node = self.grid[ny][nx]
-                neighbors.append((neighbor_coords, neighbor_node.edge_weight))  # Correctly retrieve edge_weight
+                # Multiply the base movement cost by the node's edge weight
+                total_cost = base_cost * neighbor_node.edge_weight
+                neighbors.append((neighbor_coords, total_cost))
 
         return neighbors
 
