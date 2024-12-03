@@ -452,6 +452,8 @@ class WarehouseVisualizer(QMainWindow):
         if not os.path.exists(self.scenario_dir):
             os.makedirs(self.scenario_dir)
 
+        self.current_diagonal_state = False
+
         # Initialize all UI elements
         # Dropdowns
         self.spacing_dropdown = QComboBox(self)
@@ -537,6 +539,7 @@ class WarehouseVisualizer(QMainWindow):
 
         # Checkbox
         self.diagonal_checkbox = QCheckBox("Allow Diagonal Neighbors", self)
+        self.diagonal_checkbox.stateChanged.connect(self.handle_diagonal_change)
 
         # Add a new checkbox for using start node or random node in benchmarks
         self.use_start_as_benchmark_start_checkbox = QCheckBox("Use Start Node for Benchmarks", self)
@@ -644,6 +647,20 @@ class WarehouseVisualizer(QMainWindow):
             "Johnson's with A*": {"handles_negative": True}
         }
 
+    def handle_diagonal_change(self, state):
+        """Handle changes to the diagonal movement checkbox."""
+        new_diagonal_state = bool(state)
+        if new_diagonal_state != self.current_diagonal_state:
+            # Clear the Johnson's graph cache when diagonal movement changes
+            if hasattr(self, 'johnsons_graph'):
+                delattr(self, 'johnsons_graph')
+            if hasattr(self, 'last_grid_state'):
+                delattr(self, 'last_grid_state')
+            print("Cleared Johnson's graph cache due to diagonal movement change")
+            self.current_diagonal_state = new_diagonal_state
+
+            # Reset the grid to clear any existing paths
+            self.reset_grid()
     def on_algorithm_changed(self, index):
         """Handle algorithm selection change."""
         # Reset grid while preserving start, end, and barriers
@@ -1162,26 +1179,84 @@ class WarehouseVisualizer(QMainWindow):
         else:
             self.counter_label.setText("No path found.")
 
+    def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
+        """
+        Helper function to get neighbors for Johnson's algorithms with proper diagonal movement costs.
+        """
+        (x, y) = node
+        # Define orthogonal and diagonal neighbors with their respective costs
+        four_neighbors = [
+            ((-1, 0), 1.0),  # Left
+            ((1, 0), 1.0),  # Right
+            ((0, -1), 1.0),  # Up
+            ((0, 1), 1.0)  # Down
+        ]
+
+        eight_neighbors = [
+            ((-1, -1), 1.414),  # Up-Left (√2)
+            ((1, -1), 1.414),  # Up-Right
+            ((-1, 1), 1.414),  # Down-Left
+            ((1, 1), 1.414)  # Down-Right
+        ]
+
+        potential_neighbors = four_neighbors
+        if diagonal_neighbors:
+            potential_neighbors.extend(eight_neighbors)
+
+        neighbors = []
+        for (dx, dy), base_cost in potential_neighbors:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
+                neighbor_node = self.grid[ny][nx]
+                if not neighbor_node.is_obstacle:
+                    neighbor_coords = (nx, ny)
+                    # Multiply the base movement cost by the node's edge weight
+                    total_cost = base_cost * neighbor_node.edge_weight
+                    neighbors.append((neighbor_coords, total_cost))
+
+        return neighbors
+
+    def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
+        """
+        Helper function to get neighbors for Johnson's algorithms with proper diagonal movement costs.
+        """
+        (x, y) = node
+        # Define orthogonal and diagonal neighbors with their respective costs
+        four_neighbors = [
+            ((-1, 0), 1.0),  # Left
+            ((1, 0), 1.0),  # Right
+            ((0, -1), 1.0),  # Up
+            ((0, 1), 1.0)  # Down
+        ]
+
+        eight_neighbors = [
+            ((-1, -1), 1.414),  # Up-Left (√2)
+            ((1, -1), 1.414),  # Up-Right
+            ((-1, 1), 1.414),  # Down-Left
+            ((1, 1), 1.414)  # Down-Right
+        ]
+
+        potential_neighbors = four_neighbors
+        if diagonal_neighbors:
+            potential_neighbors.extend(eight_neighbors)
+
+        neighbors = []
+        for (dx, dy), base_cost in potential_neighbors:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
+                neighbor_node = self.grid[ny][nx]
+                if not neighbor_node.is_obstacle:
+                    neighbor_coords = (nx, ny)
+                    # Multiply the base movement cost by the node's edge weight
+                    total_cost = base_cost * neighbor_node.edge_weight
+                    neighbors.append((neighbor_coords, total_cost))
+
+        return neighbors
+
     def run_johnsons(self, start, end, diagonal_neighbors=False, visualize=True):
         """
         Johnson's algorithm implementation with improved negative weight handling.
         """
-
-        def get_neighbors_for_reweighting(node):
-            (x, y) = node
-            four_neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-            if diagonal_neighbors:
-                four_neighbors += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-            neighbors = []
-            for dx, dy in four_neighbors:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                    neighbor_node = self.grid[ny][nx]
-                    if not neighbor_node.is_obstacle:
-                        neighbor_coords = (nx, ny)
-                        neighbors.append((neighbor_coords, neighbor_node.edge_weight))
-            return neighbors
-
         mandatory_visits = 0
         pathfinding_visits = 0
 
@@ -1225,7 +1300,7 @@ class WarehouseVisualizer(QMainWindow):
                 # Add edges, considering aisle nodes
                 for node in current_nodes:
                     modified_graph[virtual_node].append((node, 0))
-                    for neighbor, weight in get_neighbors_for_reweighting(node):
+                    for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
                         if neighbor in current_nodes:
                             modified_graph[node].append((neighbor, weight))
 
@@ -1243,7 +1318,7 @@ class WarehouseVisualizer(QMainWindow):
                                 updates = True
                                 if v != virtual_node:
                                     mandatory_visits += 1
-                                    if visualize and v != start and v != end :  # Preserve start node color
+                                    if visualize and v != start and v != end:  # Preserve start node color
                                         self.grid[v[1]][v[0]].set_relaxed()
                                         self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
                                         QApplication.processEvents()
@@ -1370,22 +1445,6 @@ class WarehouseVisualizer(QMainWindow):
         """
         Johnson's algorithm implementation with A* pathfinding after reweighting.
         """
-
-        def get_neighbors_for_reweighting(node):
-            (x, y) = node
-            four_neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-            if diagonal_neighbors:
-                four_neighbors += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-            neighbors = []
-            for dx, dy in four_neighbors:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                    neighbor_node = self.grid[ny][nx]
-                    if not neighbor_node.is_obstacle:
-                        neighbor_coords = (nx, ny)
-                        neighbors.append((neighbor_coords, neighbor_node.edge_weight))
-            return neighbors
-
         mandatory_visits = 0
         pathfinding_visits = 0
 
@@ -1421,7 +1480,7 @@ class WarehouseVisualizer(QMainWindow):
                 for node in current_nodes:
                     modified_graph[node] = []
                     mandatory_visits += 1
-                    if visualize and node != start and node != end: # Preserve start node color
+                    if visualize and node != start and node != end:
                         self.grid[node[1]][node[0]].set_visited()
                         self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
                         QApplication.processEvents()
@@ -1429,7 +1488,7 @@ class WarehouseVisualizer(QMainWindow):
                 # Add edges, considering aisle nodes
                 for node in current_nodes:
                     modified_graph[virtual_node].append((node, 0))
-                    for neighbor, weight in get_neighbors_for_reweighting(node):
+                    for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
                         if neighbor in current_nodes:
                             modified_graph[node].append((neighbor, weight))
 
@@ -1447,7 +1506,7 @@ class WarehouseVisualizer(QMainWindow):
                                 updates = True
                                 if v != virtual_node:
                                     mandatory_visits += 1
-                                    if visualize and v != start and v != end:  # Preserve start node color
+                                    if visualize and v != start and v != end:
                                         self.grid[v[1]][v[0]].set_relaxed()
                                         self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
                                         QApplication.processEvents()
@@ -1573,6 +1632,8 @@ class WarehouseVisualizer(QMainWindow):
             self.counter_label.setStyleSheet("color: red;")
             self.counter_label.setText("No path found")
         return None, (mandatory_visits, pathfinding_visits)
+
+
     def bellman_ford_for_johnsons(self, graph, source):
         """Helper function for Johnson's algorithm to compute h values."""
         distances = {node: float('inf') for node in graph}
