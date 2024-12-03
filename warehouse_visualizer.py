@@ -1890,12 +1890,96 @@ class WarehouseVisualizer(QMainWindow):
         path.reverse()
         return path
 
+    def visualize_next_path(self):
+        # First, check if all target nodes have been processed
+        if self.current_target_index >= len(self.all_target_nodes_copy):
+            self.all_paths_timer.stop()
+            QMessageBox.information(self, "Show All Paths", "Completed visualizing all paths.")
+            self.set_ui_enabled(True)
+            print("Completed visualizing all paths")
+            return
+
+        # Now, proceed with visualization
+        node = self.all_target_nodes_copy[self.current_target_index]
+        print(f"Visualizing path {self.current_target_index + 1} of {len(self.all_target_nodes_copy)}")
+        print(f"Visualizing path to node: {node.name}")
+
+        # Set end node to this node
+        self.end_node = node
+
+        # Reset grid before each run
+        self.reset_grid()
+        print("Grid reset before visualizing the current path")
+
+        # Get start and end coordinates
+        start = (int(self.start_node.pos().x() // self.node_size),
+                 int(self.start_node.pos().y() // self.node_size))
+        end = (int(self.end_node.pos().x() // self.node_size),
+               int(self.end_node.pos().y() // self.node_size))
+        print(f"Start coordinates: {start}, End coordinates: {end}")
+
+        # Determine which algorithm to run based on dropdown selection
+        selected_algorithm = self.algorithm_dropdown.currentText()
+        print(f"Running algorithm: {selected_algorithm}")
+
+        try:
+            # Run the selected algorithm without visualization
+            if selected_algorithm == "Dijkstra's":
+                path, _ = self.run_dijkstra(start, end, diagonal_neighbors=False, visualize=False)
+            elif selected_algorithm == "Bellman-Ford":
+                path, _ = self.run_bellman_ford(start, end, diagonal_neighbors=False, visualize=False)
+            elif selected_algorithm.startswith("A*"):
+                # Determine heuristic type based on selection
+                if selected_algorithm == "A* (Manhattan Distance)":
+                    heuristic_type = "Manhattan"
+                elif selected_algorithm == "A* (Euclidean Distance)":
+                    heuristic_type = "Euclidean"
+                elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
+                    heuristic_type = "Modified Euclidean"
+                else:
+                    heuristic_type = "Manhattan"  # Default heuristic
+
+                path, _ = self.run_astar(start, end, diagonal_neighbors=False, visualize=False,
+                                         heuristic_type=heuristic_type)
+            elif selected_algorithm == "SPFA":
+                path, _ = self.run_spfa(start, end, diagonal_neighbors=False, visualize=False)
+            elif selected_algorithm == "Johnson's":
+                path, _ = self.run_johnsons(start, end, diagonal_neighbors=False, visualize=False)
+            elif selected_algorithm == "Johnson's with A*":
+                path, _ = self.run_johnsons_astar(start, end, diagonal_neighbors=False, visualize=False)
+            else:
+                path = None
+
+            # Visualize the path if found
+            if path:
+                for node_coords in path:
+                    if node_coords != start and node_coords != end:
+                        self.grid[node_coords[1]][node_coords[0]].set_path()
+                print(f"Path to {node.name} visualized successfully.")
+            else:
+                print(f"No path found to {node.name}.")
+
+            # Update the counter label
+            self.counter_label.setText(
+                f"Visualized paths: {self.current_target_index + 1}/{len(self.all_target_nodes_copy)}")
+            QApplication.processEvents()  # Update the UI in real-time
+
+        except Exception as e:
+            print(f"Exception during path visualization: {e}")
+            QMessageBox.warning(self, "Error", f"An error occurred while visualizing the path:\n{e}")
+            self.all_paths_timer.stop()
+            self.set_ui_enabled(True)
+            return
+
+        # Move to the next target node
+        self.current_target_index += 1
+
     def visualize_path_step_by_step(self):
         """Visualize the path traversal with a delay."""
         self.step_index = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_step)
-        self.timer.start(200)  # 200 ms delay
+        self.timer.start(100)  # 200 ms delay
 
         # Display the total path length in addition to nodes searched
         total_path_length = len(self.search_path)
@@ -2628,25 +2712,44 @@ class WarehouseVisualizer(QMainWindow):
 
     # *** New Method Addition Start ***
     def handle_show_all_paths(self):
-        """Handle the 'Show All Paths' button click to visualize paths to all nodes."""
+        print("handle_show_all_paths called")
         if not self.start_node:
+            print("Start node not set")
             QMessageBox.warning(self, "Error", "Start node not set.")
             return
 
-        if not hasattr(self, 'item_nodes') or not self.item_nodes:
-            QMessageBox.warning(self, "Error", "No target nodes available.")
+        # Determine target nodes based on the 'all_nodes_checkbox' state
+        if self.all_nodes_checkbox.isChecked():
+            self.all_target_nodes = [
+                node for row in self.grid for node in row
+                if not node.is_obstacle and not node.is_aisle and node != self.start_node
+            ]
+            print(f"All nodes selected for benchmarking: {len(self.all_target_nodes)} targets")
+        else:
+            if not hasattr(self, 'item_nodes') or not self.item_nodes:
+                print("No item nodes available")
+                QMessageBox.warning(self, "Error", "No target nodes available.")
+                return
+            self.all_target_nodes = [node_info['node'] for node_info in self.item_nodes]
+            print(f"Item nodes selected for benchmarking: {len(self.all_target_nodes)} targets")
+
+        if not self.all_target_nodes:
+            print("No target nodes available for visualization")
+            QMessageBox.warning(self, "Error", "No target nodes available for visualization.")
             return
 
         reply = QMessageBox.question(self, 'Show All Paths',
-                                     "This operation will visualize paths to all items. Do you want to proceed?",
+                                     f"This operation will visualize paths to {'all traversable nodes' if self.all_nodes_checkbox.isChecked() else 'all item nodes'}. Do you want to proceed?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
 
         if reply == QMessageBox.StandardButton.No:
+            print("User cancelled the Show All Paths operation")
             return
 
         has_negative = self.has_negative_weights()
         selected_algorithm = self.algorithm_dropdown.currentText()
+        print(f"Selected algorithm: {selected_algorithm}, Has negative weights: {has_negative}")
 
         if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
             compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
@@ -2657,86 +2760,27 @@ class WarehouseVisualizer(QMainWindow):
                 f"The selected algorithm '{selected_algorithm}' cannot handle negative edge weights.\n"
                 f"Please choose one of these algorithms:\n{', '.join(compatible_algorithms)}"
             )
+            print("Selected algorithm cannot handle negative weights")
             return
 
         # Disable UI elements to prevent interference during the operation
         self.set_ui_enabled(False)
+        print("UI elements disabled for Show All Paths operation")
 
         # Initialize a list of target nodes
-        self.all_target_nodes = self.item_nodes.copy()
+        self.all_target_nodes_copy = self.all_target_nodes.copy()
         self.current_target_index = 0
+        print(f"Starting visualization of {len(self.all_target_nodes_copy)} paths")
 
         # Initialize a timer to handle path visualization sequentially
         self.all_paths_timer = QTimer(self)
         self.all_paths_timer.timeout.connect(self.visualize_next_path)
-        self.all_paths_timer.start(100)  # 100 ms delay between paths
+        self.all_paths_timer.start(200)  # 100 ms delay between paths
 
-    def visualize_next_path(self):
-        """Visualize the next path in the list of target nodes."""
-        if self.current_target_index >= len(self.all_target_nodes):
-            self.all_paths_timer.stop()
-            QMessageBox.information(self, "Show All Paths", "Completed visualizing all paths.")
-            self.set_ui_enabled(True)
-            return
-
-        node_info = self.all_target_nodes[self.current_target_index]
-        node = node_info['node']
-        item_name = node_info['item']
-        x = node_info['x']
-        y = node_info['y']
-
-        # Set end node to this node
-        self.end_node = node
-
-        # Reset grid before each run
+        # Optionally, reset any existing paths before starting
         self.reset_grid()
+        print("Grid reset for path visualization")
 
-        # Get start and end coordinates
-        start_coords = (int(self.start_node.pos().x() // self.node_size),
-                        int(self.start_node.pos().y() // self.node_size))
-        end_coords = (x, y)
-
-        # Determine which algorithm to run based on dropdown selection
-        selected_algorithm = self.algorithm_dropdown.currentText()
-
-        if selected_algorithm == "Dijkstra's":
-            path, _ = self.run_dijkstra(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "Bellman-Ford":
-            path, _ = self.run_bellman_ford(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "A* (Manhattan Distance)":
-            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "A* (Euclidean Distance)":
-            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
-            path, _ = self.run_astar(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "Johnson's":
-            path, (mandatory_visits, pathfinding_visits) = self.run_johnsons(start_coords, end_coords,
-                                                                             diagonal_neighbors=False, visualize=False)
-        elif selected_algorithm == "Johnson's with A*":
-            path, (mandatory_visits, pathfinding_visits) = self.run_johnsons_astar(start_coords, end_coords,
-                                                                                   diagonal_neighbors=False,
-                                                                                   visualize=False)
-        elif selected_algorithm == "SPFA":
-            path, _ = self.run_spfa(start_coords, end_coords, diagonal_neighbors=False, visualize=False)
-        else:
-            path = None
-
-        # Visualize the path if found
-        if path:
-            for node_coords in path:
-                if node_coords != start_coords and node_coords != end_coords:
-                    self.grid[node_coords[1]][node_coords[0]].set_path()
-            # Display success message
-            print(f"Path to {item_name} visualized.")
-        else:
-            print(f"No path found to {item_name}.")
-
-        # Update the counter label
-        self.counter_label.setText(f"Visualized paths: {self.current_target_index + 1}/{len(self.all_target_nodes)}")
-        QApplication.processEvents()  # Update the UI in real-time
-
-        # Move to the next target node
-        self.current_target_index += 1
 
     def set_ui_enabled(self, enabled):
         """Enable or disable UI elements during bulk operations."""
