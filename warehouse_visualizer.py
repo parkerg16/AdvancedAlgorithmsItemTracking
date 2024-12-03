@@ -497,7 +497,7 @@ class WarehouseVisualizer(QMainWindow):
 
         self.benchmark_spinbox = QSpinBox(self)
         self.benchmark_spinbox.setRange(1, 1000)
-        self.benchmark_spinbox.setValue(10)
+        self.benchmark_spinbox.setValue(1)
 
         # Buttons
         self.start_button = QPushButton("Set Start", self)
@@ -1182,6 +1182,7 @@ class WarehouseVisualizer(QMainWindow):
     def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
         """
         Helper function to get neighbors for Johnson's algorithms with proper diagonal movement costs.
+        Includes checking for barrier jumping with diagonal moves.
         """
         (x, y) = node
         # Define orthogonal and diagonal neighbors with their respective costs
@@ -1199,12 +1200,32 @@ class WarehouseVisualizer(QMainWindow):
             ((1, 1), 1.414)  # Down-Right
         ]
 
-        potential_neighbors = four_neighbors
-        if diagonal_neighbors:
-            potential_neighbors.extend(eight_neighbors)
+        def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
+            """
+            Check if a diagonal move is valid by ensuring both orthogonal paths aren't blocked.
+            For example, to move diagonally up-right, both the 'up' and 'right' spaces must be clear.
+            """
+            dx = new_x - curr_x
+            dy = new_y - curr_y
+
+            # Check first orthogonal path (horizontal)
+            if not (0 <= curr_x + dx < self.grid_size):
+                return False
+            if self.grid[curr_y][curr_x + dx].is_obstacle:
+                return False
+
+            # Check second orthogonal path (vertical)
+            if not (0 <= curr_y + dy < self.grid_size):
+                return False
+            if self.grid[curr_y + dy][curr_x].is_obstacle:
+                return False
+
+            return True
 
         neighbors = []
-        for (dx, dy), base_cost in potential_neighbors:
+
+        # First add orthogonal neighbors (no need for extra checks)
+        for (dx, dy), base_cost in four_neighbors:
             nx, ny = x + dx, y + dy
             if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
                 neighbor_node = self.grid[ny][nx]
@@ -1214,42 +1235,17 @@ class WarehouseVisualizer(QMainWindow):
                     total_cost = base_cost * neighbor_node.edge_weight
                     neighbors.append((neighbor_coords, total_cost))
 
-        return neighbors
-
-    def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
-        """
-        Helper function to get neighbors for Johnson's algorithms with proper diagonal movement costs.
-        """
-        (x, y) = node
-        # Define orthogonal and diagonal neighbors with their respective costs
-        four_neighbors = [
-            ((-1, 0), 1.0),  # Left
-            ((1, 0), 1.0),  # Right
-            ((0, -1), 1.0),  # Up
-            ((0, 1), 1.0)  # Down
-        ]
-
-        eight_neighbors = [
-            ((-1, -1), 1.414),  # Up-Left (√2)
-            ((1, -1), 1.414),  # Up-Right
-            ((-1, 1), 1.414),  # Down-Left
-            ((1, 1), 1.414)  # Down-Right
-        ]
-
-        potential_neighbors = four_neighbors
+        # Then add diagonal neighbors if enabled and valid
         if diagonal_neighbors:
-            potential_neighbors.extend(eight_neighbors)
-
-        neighbors = []
-        for (dx, dy), base_cost in potential_neighbors:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
-                neighbor_node = self.grid[ny][nx]
-                if not neighbor_node.is_obstacle:
-                    neighbor_coords = (nx, ny)
-                    # Multiply the base movement cost by the node's edge weight
-                    total_cost = base_cost * neighbor_node.edge_weight
-                    neighbors.append((neighbor_coords, total_cost))
+            for (dx, dy), base_cost in eight_neighbors:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
+                    neighbor_node = self.grid[ny][nx]
+                    if not neighbor_node.is_obstacle and is_diagonal_valid(x, y, nx, ny):
+                        neighbor_coords = (nx, ny)
+                        # Multiply the base movement cost by the node's edge weight
+                        total_cost = base_cost * neighbor_node.edge_weight
+                        neighbors.append((neighbor_coords, total_cost))
 
         return neighbors
 
@@ -1939,21 +1935,49 @@ class WarehouseVisualizer(QMainWindow):
             ((1, 1), 1.414)  # Down-Right
         ]
 
-        # Start with orthogonal neighbors
-        potential_neighbors = four_neighbors
-        # Add diagonal neighbors if enabled
-        if diagonal_neighbors:
-            potential_neighbors.extend(eight_neighbors)
+        def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
+            """
+            Check if a diagonal move is valid by ensuring both orthogonal paths aren't blocked.
+            For example, to move diagonally up-right, both the 'up' and 'right' spaces must be clear.
+            """
+            dx = new_x - curr_x
+            dy = new_y - curr_y
+
+            # Check first orthogonal path (horizontal)
+            if not (0 <= curr_x + dx < self.grid_size):
+                return False
+            if not self.is_traversable(curr_x + dx, curr_y):
+                return False
+
+            # Check second orthogonal path (vertical)
+            if not (0 <= curr_y + dy < self.grid_size):
+                return False
+            if not self.is_traversable(curr_x, curr_y + dy):
+                return False
+
+            return True
 
         neighbors = []
-        for (dx, dy), base_cost in potential_neighbors:
+
+        # First add orthogonal neighbors
+        for (dx, dy), base_cost in four_neighbors:
             nx, ny = x + dx, y + dy
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
                 neighbor_coords = (nx, ny)
                 neighbor_node = self.grid[ny][nx]
-                # Multiply the base movement cost by the node's edge weight
                 total_cost = base_cost * neighbor_node.edge_weight
                 neighbors.append((neighbor_coords, total_cost))
+
+        # Then add diagonal neighbors if enabled and valid
+        if diagonal_neighbors:
+            for (dx, dy), base_cost in eight_neighbors:
+                nx, ny = x + dx, y + dy
+                if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
+                    if is_diagonal_valid(x, y, nx, ny):
+                        neighbor_coords = (nx, ny)
+                        neighbor_node = self.grid[ny][nx]
+                        total_cost = base_cost * neighbor_node.edge_weight
+                        neighbors.append((neighbor_coords, total_cost))
 
         return neighbors
 
