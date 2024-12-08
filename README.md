@@ -38,3 +38,5 @@ Step 4: Select the "Set End" Button and click on an empty space on the grid.
 Step 5: Select the "Set Barriers" Button and add barriers as you desire.  
 Step 6: Select the "Save Scenario" Button and name your scenario.  
 ![boxed_out_scenario.png](Images%2Fboxed_out_scenario.png)
+
+### Option 3: Benchmarking Algorithms

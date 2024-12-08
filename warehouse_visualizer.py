@@ -2314,7 +2314,11 @@ class WarehouseVisualizer(QMainWindow):
 
         # Save results
         output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
-        output_filepath = os.path.join(self.scenario_dir, output_filename)
+        result_dir = os.path.join(self.scenario_dir, "result_plots")
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+
+        output_filepath = os.path.join(result_dir, output_filename)
 
         try:
             with open(output_filepath, 'w') as f:
