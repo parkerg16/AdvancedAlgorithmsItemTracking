@@ -17,7 +17,7 @@ import json
 import time  # Import time module for benchmarking
 
 
-def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=True, filename="warehouse_layout.csv"):
+def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=True, filename=None):
     """Generate warehouse data with aisles and shelves and save it as a CSV file."""
     shelf_locations = ['A', 'B', 'C', 'D']
 
@@ -53,7 +53,7 @@ def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=
     df_inventory = pd.DataFrame(inventory_data)
 
     # Optionally save the DataFrame to a CSV file for viewing
-    if save_to_csv:
+    if save_to_csv and filename:
         df_inventory.to_csv(filename, index=False)
         print(f"Warehouse layout saved to {filename}")
 
