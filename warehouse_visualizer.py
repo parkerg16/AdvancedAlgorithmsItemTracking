@@ -666,6 +666,11 @@ class WarehouseVisualizer(QMainWindow):
         # Reset grid while preserving start, end, and barriers
         self.reset_grid()
 
+        selected_algorithm = self.algorithm_dropdown.currentText()
+
+        if not selected_algorithm:
+            return
+
         # Clear any cached Johnson's graph if it exists
         if hasattr(self, 'johnsons_graph'):
             delattr(self, 'johnsons_graph')
@@ -2224,127 +2229,7 @@ class WarehouseVisualizer(QMainWindow):
 
         self.load_dropdown.blockSignals(False)  # Re-enable signals
 
-    def run_random_benchmarks(self):
-        """Run benchmarks with both orthogonal and diagonal movement."""
-        has_negative = self.has_negative_weights()
-        if has_negative:
-            compatible_algorithms = [algo for algo, caps in self.algorithm_capabilities.items()
-                                     if caps["handles_negative"]]
-            self.algorithm_dropdown.clear()
-            self.algorithm_dropdown.addItems(compatible_algorithms)
-            QMessageBox.information(
-                self,
-                "Negative Weights Detected",
-                f"Only running algorithms that support negative weights:\n{', '.join(compatible_algorithms)}"
-            )
 
-        num_runs = self.benchmark_spinbox.value()
-
-        # Determine target nodes
-        if self.all_nodes_checkbox.isChecked():
-            target_nodes = [
-                node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle and node != self.start_node
-            ]
-        else:
-            target_nodes = [node_info['node'] for node_info in self.item_nodes]
-
-        if not target_nodes:
-            QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
-            return
-
-        use_fixed_start = self.use_start_as_benchmark_start_checkbox.isChecked()
-
-        # Setup start nodes
-        if use_fixed_start:
-            if not self.start_node:
-                QMessageBox.warning(self, "Error", "Start node is not set.")
-                return
-            start_nodes = [self.start_node] * num_runs
-        else:
-            traversable_nodes = [
-                node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle
-            ]
-            if not traversable_nodes:
-                QMessageBox.warning(self, "Error", "No traversable nodes available.")
-                return
-            start_nodes = [random.choice(traversable_nodes) for _ in range(num_runs)]
-
-        # Initialize benchmark data structure for both movement types
-        benchmark_data = {
-            'orthogonal': {
-                'num_runs': num_runs,
-                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                'mode': 'Orthogonal Movement',
-                'runs': []
-            },
-            'diagonal': {
-                'num_runs': num_runs,
-                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                'mode': 'Diagonal Movement',
-                'runs': []
-            }
-        }
-
-        # Disable UI during benchmarking
-        self.set_ui_enabled(False)
-
-        # Run benchmarks for both movement types
-        for movement_type in ['orthogonal', 'diagonal']:
-            diagonal_enabled = (movement_type == 'diagonal')
-
-            for run in range(1, num_runs + 1):
-                start_node = start_nodes[run - 1]
-                self.set_start_node(start_node)
-
-                self.counter_label.setText(
-                    f"Benchmark Run {run}/{num_runs} - {movement_type.capitalize()} Movement"
-                )
-                QApplication.processEvents()
-
-                # Run benchmarking with specified movement type
-                run_metrics = self.benchmark_single_run(target_nodes, diagonal_enabled)
-
-                benchmark_data[movement_type]['runs'].append({
-                    'run_number': run,
-                    'start_node': self.get_node_position(start_node),
-                    'metrics': run_metrics
-                })
-
-        # Save results
-        output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
-        result_dir = os.path.join(self.scenario_dir, "result_plots")
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
-
-        output_filepath = os.path.join(result_dir, output_filename)
-
-        try:
-            with open(output_filepath, 'w') as f:
-                json.dump(benchmark_data, f, indent=4)
-            QMessageBox.information(self, "Benchmark Saved", f"Results saved to {output_filepath}")
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to save benchmark results:\n{e}")
-
-        # Process and display results for both movement types
-        for movement_type in ['orthogonal', 'diagonal']:
-            averaged_metrics = self.process_benchmark_data(benchmark_data[movement_type])
-            self.display_benchmark_results(averaged_metrics, movement_type)
-            self.plot_benchmark_results(
-                averaged_metrics,
-                num_runs,
-                f"{movement_type.capitalize()} Movement"
-            )
-
-        # Re-enable UI
-        self.set_ui_enabled(True)
-
-        QMessageBox.information(
-            self,
-            "Benchmarks Completed",
-            f"Completed {num_runs} runs with both orthogonal and diagonal movement."
-        )
 
     def process_benchmark_data(self, benchmark_data):
         """
@@ -2510,12 +2395,280 @@ class WarehouseVisualizer(QMainWindow):
             f"Benchmark plots for {movement_type} have been saved in:\n{plots_dir}"
         )
         print(f"Benchmark plots for {movement_type} saved in {plots_dir}")
-    def benchmark_single_run(self, target_nodes, diagonal_enabled=False):
-        """Modified benchmark_single_run to support diagonal movement."""
+
+    def run_random_benchmarks(self):
+        """Run benchmarks with both orthogonal and diagonal movement."""
+        has_negative = self.has_negative_weights()
+
+        # Determine which algorithms to test based on presence of negative weights
+        if has_negative:
+            algorithms_to_test = [algo for algo, caps in self.algorithm_capabilities.items()
+                                  if caps["handles_negative"]]
+            QMessageBox.information(
+                self,
+                "Negative Weights Detected",
+                f"Only running algorithms that support negative weights:\n{', '.join(algorithms_to_test)}"
+            )
+        else:
+            algorithms_to_test = list(self.algorithm_capabilities.keys())
+
+        num_runs = self.benchmark_spinbox.value()
+
+        # Determine target nodes
+        if self.all_nodes_checkbox.isChecked():
+            target_nodes = [
+                node for row in self.grid for node in row
+                if not node.is_obstacle and not node.is_aisle and node != self.start_node
+            ]
+        else:
+            target_nodes = [node_info['node'] for node_info in self.item_nodes]
+
+        if not target_nodes:
+            QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
+            return
+
+        use_fixed_start = self.use_start_as_benchmark_start_checkbox.isChecked()
+
+        # Setup start nodes
+        if use_fixed_start:
+            if not self.start_node:
+                QMessageBox.warning(self, "Error", "Start node is not set.")
+                return
+            start_nodes = [self.start_node] * num_runs
+        else:
+            traversable_nodes = [
+                node for row in self.grid for node in row
+                if not node.is_obstacle and not node.is_aisle
+            ]
+            if not traversable_nodes:
+                QMessageBox.warning(self, "Error", "No traversable nodes available.")
+                return
+            start_nodes = [random.choice(traversable_nodes) for _ in range(num_runs)]
+
+        # Initialize benchmark data structure for both movement types
+        benchmark_data = {
+            'orthogonal': {
+                'num_runs': num_runs,
+                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                'mode': 'Orthogonal Movement',
+                'runs': []
+            },
+            'diagonal': {
+                'num_runs': num_runs,
+                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                'mode': 'Diagonal Movement',
+                'runs': []
+            }
+        }
+
+        # Disable UI during benchmarking
+        self.set_ui_enabled(False)
+
+        # Run benchmarks for both movement types
+        for movement_type in ['orthogonal', 'diagonal']:
+            diagonal_enabled = (movement_type == 'diagonal')
+
+            for run in range(1, num_runs + 1):
+                start_node = start_nodes[run - 1]
+                self.set_start_node(start_node)
+
+                self.counter_label.setText(
+                    f"Benchmark Run {run}/{num_runs} - {movement_type.capitalize()} Movement"
+                )
+                QApplication.processEvents()
+
+                # Run benchmarking with specified movement type and algorithms
+                run_metrics = self.benchmark_single_run(target_nodes, diagonal_enabled, algorithms_to_test)
+
+                benchmark_data[movement_type]['runs'].append({
+                    'run_number': run,
+                    'start_node': self.get_node_position(start_node),
+                    'metrics': run_metrics
+                })
+
+        # Save results
+        output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
+        result_dir = os.path.join(self.scenario_dir, "result_plots")
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+
+        output_filepath = os.path.join(result_dir, output_filename)
+
+        try:
+            with open(output_filepath, 'w') as f:
+                json.dump(benchmark_data, f, indent=4)
+            QMessageBox.information(self, "Benchmark Saved", f"Results saved to {output_filepath}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save benchmark results:\n{e}")
+
+        # Process and display results for both movement types
+        for movement_type in ['orthogonal', 'diagonal']:
+            averaged_metrics = self.process_benchmark_data(benchmark_data[movement_type])
+            self.display_benchmark_results(averaged_metrics, movement_type)
+            self.plot_benchmark_results(
+                averaged_metrics,
+                num_runs,
+                f"{movement_type.capitalize()} Movement"
+            )
+
+        # Re-enable UI
+        self.set_ui_enabled(True)
+
+        QMessageBox.information(
+            self,
+            "Benchmarks Completed",
+            f"Completed {num_runs} runs with both orthogonal and diagonal movement."
+        )
+
+    def run_random_benchmarks(self):
+        """Run benchmarks with both orthogonal and diagonal movement."""
+        # First check if warehouse layout has been generated
+        if not hasattr(self, 'item_nodes') or not self.item_nodes:
+            QMessageBox.warning(
+                self,
+                "No Warehouse Layout",
+                "Please generate a warehouse layout before running benchmarks."
+            )
+            return
+
+        has_negative = self.has_negative_weights()
+
+        # Determine which algorithms to test based on presence of negative weights
+        if has_negative:
+            algorithms_to_test = [algo for algo, caps in self.algorithm_capabilities.items()
+                                  if caps["handles_negative"]]
+            if not algorithms_to_test:
+                QMessageBox.warning(
+                    self,
+                    "No Compatible Algorithms",
+                    "No algorithms available that can handle negative weights."
+                )
+                return
+            QMessageBox.information(
+                self,
+                "Negative Weights Detected",
+                f"Only running algorithms that support negative weights:\n{', '.join(algorithms_to_test)}"
+            )
+        else:
+            algorithms_to_test = list(self.algorithm_capabilities.keys())
+
+        num_runs = self.benchmark_spinbox.value()
+
+        # Determine target nodes
+        if self.all_nodes_checkbox.isChecked():
+            target_nodes = [
+                node for row in self.grid for node in row
+                if not node.is_obstacle and not node.is_aisle and node != self.start_node
+            ]
+        else:
+            target_nodes = [node_info['node'] for node_info in self.item_nodes]
+
+        if not target_nodes:
+            QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
+            return
+
+        use_fixed_start = self.use_start_as_benchmark_start_checkbox.isChecked()
+
+        # Setup start nodes
+        if use_fixed_start:
+            if not self.start_node:
+                QMessageBox.warning(self, "Error", "Start node is not set.")
+                return
+            start_nodes = [self.start_node] * num_runs
+        else:
+            traversable_nodes = [
+                node for row in self.grid for node in row
+                if not node.is_obstacle and not node.is_aisle
+            ]
+            if not traversable_nodes:
+                QMessageBox.warning(self, "Error", "No traversable nodes available.")
+                return
+            start_nodes = [random.choice(traversable_nodes) for _ in range(num_runs)]
+
+        # Initialize benchmark data structure for both movement types
+        benchmark_data = {
+            'orthogonal': {
+                'num_runs': num_runs,
+                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                'mode': 'Orthogonal Movement',
+                'runs': []
+            },
+            'diagonal': {
+                'num_runs': num_runs,
+                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                'mode': 'Diagonal Movement',
+                'runs': []
+            }
+        }
+
+        # Disable UI during benchmarking
+        self.set_ui_enabled(False)
+
+        # Run benchmarks for both movement types
+        for movement_type in ['orthogonal', 'diagonal']:
+            diagonal_enabled = (movement_type == 'diagonal')
+
+            for run in range(1, num_runs + 1):
+                start_node = start_nodes[run - 1]
+                self.set_start_node(start_node)
+
+                self.counter_label.setText(
+                    f"Benchmark Run {run}/{num_runs} - {movement_type.capitalize()} Movement"
+                )
+                QApplication.processEvents()
+
+                # Run benchmarking with specified movement type and algorithms
+                run_metrics = self.benchmark_single_run(target_nodes, diagonal_enabled, algorithms_to_test)
+
+                benchmark_data[movement_type]['runs'].append({
+                    'run_number': run,
+                    'start_node': self.get_node_position(start_node),
+                    'metrics': run_metrics
+                })
+
+        # Save results
+        output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
+        result_dir = os.path.join(self.scenario_dir, "result_plots")
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+
+        output_filepath = os.path.join(result_dir, output_filename)
+
+        try:
+            with open(output_filepath, 'w') as f:
+                json.dump(benchmark_data, f, indent=4)
+            QMessageBox.information(self, "Benchmark Saved", f"Results saved to {output_filepath}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save benchmark results:\n{e}")
+
+        # Process and display results for both movement types
+        for movement_type in ['orthogonal', 'diagonal']:
+            averaged_metrics = self.process_benchmark_data(benchmark_data[movement_type])
+            self.display_benchmark_results(averaged_metrics, movement_type)
+            self.plot_benchmark_results(
+                averaged_metrics,
+                num_runs,
+                f"{movement_type.capitalize()} Movement"
+            )
+
+        # Re-enable UI
+        self.set_ui_enabled(True)
+
+        QMessageBox.information(
+            self,
+            "Benchmarks Completed",
+            f"Completed {num_runs} runs with both orthogonal and diagonal movement."
+        )
+
+    def benchmark_single_run(self, target_nodes, diagonal_enabled=False, algorithms_to_test=None):
+        """Modified benchmark_single_run to support diagonal movement and filtered algorithms."""
         self.reset_grid()
 
         if not self.start_node:
             return {}
+
+        if algorithms_to_test is None:
+            algorithms_to_test = list(self.algorithm_capabilities.keys())
 
         metrics_per_algorithm = {algorithm: {
             'total_path_length': 0,
@@ -2524,7 +2677,7 @@ class WarehouseVisualizer(QMainWindow):
             'valid_runs': 0,
             'total_mandatory_visits': 0 if 'Johnson' in algorithm else None,
             'total_pathfinding_visits': 0 if 'Johnson' in algorithm else None
-        } for algorithm in self.algorithm_capabilities.keys()}
+        } for algorithm in algorithms_to_test}
 
         for node in target_nodes:
             if node == self.start_node:
@@ -2542,7 +2695,7 @@ class WarehouseVisualizer(QMainWindow):
                 int(self.end_node.pos().y() // self.node_size)
             )
 
-            for algorithm in self.algorithm_capabilities.keys():
+            for algorithm in algorithms_to_test:
                 start_time = time.time()
 
                 if algorithm.startswith("A*"):
@@ -2591,6 +2744,8 @@ class WarehouseVisualizer(QMainWindow):
                                        if data['total_pathfinding_visits'] is not None and data[
                 'valid_runs'] > 0 else None)
         } for algo, data in metrics_per_algorithm.items()}
+
+
 
     def process_benchmark_data(self, benchmark_data):
         """
