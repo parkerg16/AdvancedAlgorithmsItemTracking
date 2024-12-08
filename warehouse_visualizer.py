@@ -1003,23 +1003,106 @@ class WarehouseVisualizer(QMainWindow):
     def set_end_node_from_dropdown(self):
         """Set the end node based on the item selected from the dropdown."""
         selected_item = self.item_dropdown.currentText()
+
+        # Debug info about the dropdown state
+        print("\nDropdown Debug Info:")
+        print(f"Current dropdown text: '{selected_item}'")
+        print(f"Dropdown item count: {self.item_dropdown.count()}")
+        print("All dropdown items:")
+        for i in range(self.item_dropdown.count()):
+            print(f"  Item {i}: '{self.item_dropdown.itemText(i)}'")
+
+        if not selected_item:
+            print("Warning: Selected item is empty")
+            return
+
         if selected_item == "Select Item":
-            return  # Do nothing if placeholder is selected
+            print("Info: Default 'Select Item' option chosen")
+            return
 
-        # Extract item details from the dropdown text
         try:
-            # Parsing text like: "Item_1234 (Aisle 1, Shelf 2, Location A)"
-            item_part, location_part = selected_item.split(' (')
-            item_name = item_part.strip()
-            location_part = location_part.rstrip(')')
-            # location_part is now like "Aisle 1, Shelf 2, Location A"
-            location_items = location_part.split(', ')
-            aisle_num = int(location_items[0].split(' ')[1])
-            shelf_num = int(location_items[1].split(' ')[1])
-            shelf_loc = location_items[2].split(' ')[1]
+            print(f"\nParsing Process for: '{selected_item}'")
 
-            # Determine orientation
+            # Check for delimiter
+            if " (Aisle " not in selected_item:
+                print(f"Error: Missing expected delimiter ' (Aisle ' in string: '{selected_item}'")
+                print("Expected format: 'Item_XXXX (Aisle N, Shelf M, Location L)'")
+                return
+
+            # Split into item name and location info
+            try:
+                item_part, location_part = selected_item.split(" (Aisle ", 1)
+                print(f"Split result:")
+                print(f"  Item part: '{item_part}'")
+                print(f"  Location part: '{location_part}'")
+            except ValueError as e:
+                print(f"Error splitting item and location: {e}")
+                print(f"Full string being split: '{selected_item}'")
+                return
+
+            # Remove trailing parenthesis and split location info
+            location_part = location_part.rstrip(')')
+            print(f"Location part after removing parenthesis: '{location_part}'")
+
+            try:
+                # Split location part into components
+                aisle_shelf_loc = location_part.split(", ")
+                print(f"Location components after split: {aisle_shelf_loc}")
+
+                if len(aisle_shelf_loc) != 3:
+                    print(f"Error: Expected 3 location components, got {len(aisle_shelf_loc)}")
+                    print(f"Components: {aisle_shelf_loc}")
+                    return
+
+                # Parse aisle number
+                try:
+                    aisle_num = int(aisle_shelf_loc[0])
+                    print(f"Parsed aisle number: {aisle_num}")
+                except ValueError:
+                    print(f"Error: Could not convert aisle number '{aisle_shelf_loc[0]}' to integer")
+                    return
+
+                # Parse shelf number
+                shelf_part = aisle_shelf_loc[1].split(" ")
+                print(f"Shelf part split: {shelf_part}")
+
+                if len(shelf_part) != 2 or shelf_part[0] != "Shelf":
+                    print(f"Error: Invalid shelf format: '{aisle_shelf_loc[1]}'")
+                    print("Expected format: 'Shelf X' where X is a number")
+                    return
+
+                try:
+                    shelf_num = int(shelf_part[1])
+                    print(f"Parsed shelf number: {shelf_num}")
+                except ValueError:
+                    print(f"Error: Could not convert shelf number '{shelf_part[1]}' to integer")
+                    return
+
+                # Parse location
+                loc_part = aisle_shelf_loc[2].split(" ")
+                print(f"Location part split: {loc_part}")
+
+                if len(loc_part) != 2 or loc_part[0] != "Location":
+                    print(f"Error: Invalid location format: '{aisle_shelf_loc[2]}'")
+                    print("Expected format: 'Location X'")
+                    return
+
+                shelf_loc = loc_part[1]
+                print(f"Parsed shelf location: '{shelf_loc}'")
+
+            except (ValueError, IndexError) as e:
+                print(f"Error parsing location components: {e}")
+                print(f"Location part being parsed: '{location_part}'")
+                return
+
+            # Print orientation information
             orientation = self.layout_dropdown.currentText()
+            print(f"\nLayout Configuration:")
+            print(f"Selected orientation: '{orientation}'")
+            print(f"Number of aisles: {self.num_aisles}")
+            print(f"Spacing: {self.spacing}")
+
+            # Rest of the method remains the same...
             if orientation == "Vertical Aisles":
                 orientation_type = 'vertical'
             elif orientation == "Horizontal Aisles":
@@ -1028,8 +1111,11 @@ class WarehouseVisualizer(QMainWindow):
                 orientation_type = 'mixed'
             else:
                 orientation_type = 'vertical'  # Default to vertical
+                print(f"Warning: Unknown orientation '{orientation}', defaulting to vertical")
 
-            # Reconstruct aisle positions as in generate_warehouse_layout
+            print(f"Using orientation type: {orientation_type}")
+
+            # Reconstruct aisle positions
             aisle_positions = []
             vertical_positions = set()
             horizontal_positions = set()
@@ -1060,12 +1146,17 @@ class WarehouseVisualizer(QMainWindow):
                     horizontal_positions.add(y_pos)
                     aisle_positions.append(('horizontal', y_pos))
 
-            # Now, get the aisle position for the given aisle_num
+            print(f"\nCalculated Positions:")
+            print(f"Aisle positions: {aisle_positions}")
+
+            # Check if aisle number is valid
             if aisle_num - 1 >= len(aisle_positions):
-                print(f"Aisle number {aisle_num} exceeds available positions.")
+                print(f"Error: Aisle number {aisle_num} exceeds available positions ({len(aisle_positions)})")
                 return
 
+            # Get position based on orientation
             orientation_type_aisle, pos = aisle_positions[aisle_num - 1]
+            print(f"Using position data: type={orientation_type_aisle}, pos={pos}")
 
             if orientation_type_aisle == 'vertical':
                 x = pos
@@ -1074,19 +1165,29 @@ class WarehouseVisualizer(QMainWindow):
                 x = 2 + (shelf_num - 1)
                 y = pos
 
-            # Ensure x and y are within grid bounds
+            print(f"Calculated coordinates: x={x}, y={y}")
+
+            # Ensure coordinates are within grid bounds
             if x >= self.grid_size or y >= self.grid_size:
-                print("Calculated position is out of bounds.")
+                print(f"Error: Calculated position ({x}, {y}) is out of bounds. Grid size is {self.grid_size}")
                 return
 
+            # Find the node and set it as end node
             node = self.grid[y][x]
+            if node:
+                print(f"Found node at ({x}, {y}). Setting as end node.")
+                self.set_end_node(node)
+            else:
+                print(f"Error: No node found at position ({x}, {y})")
 
-            # Now, set the end node
-            self.set_end_node(node)
-
-        except (IndexError, ValueError) as e:
-            print(f"Error parsing selected item: {e}")
-
+        except Exception as e:
+            print("\nDetailed Error Information:")
+            print(f"Exception type: {type(e).__name__}")
+            print(f"Exception message: {str(e)}")
+            print(f"Selected item text: '{selected_item}'")
+            import traceback
+            print("Full traceback:")
+            traceback.print_exc()
     def has_negative_weights(self):
         """Check if any edge weights in the grid are negative."""
         for row in self.grid:
@@ -2106,7 +2207,7 @@ class WarehouseVisualizer(QMainWindow):
             self.timer.stop()  # Stop once the entire path is visualized
 
     def save_scenario(self):
-        """Save the current warehouse layout and state as a scenario."""
+        """Save the current warehouse layout, state, and warehouse data as a scenario."""
         # Prompt the user to enter a scenario name
         scenario_name, ok = QInputDialog.getText(self, "Save Scenario", "Enter scenario name:")
         if ok and scenario_name:
@@ -2122,6 +2223,7 @@ class WarehouseVisualizer(QMainWindow):
                 'nodes': []
             }
 
+            # Save node data
             for y in range(self.grid_size):
                 for x in range(self.grid_size):
                     node = self.grid[y][x]
@@ -2130,14 +2232,37 @@ class WarehouseVisualizer(QMainWindow):
                         'y': y,
                         'is_obstacle': node.is_obstacle,
                         'is_aisle': node.is_aisle,
-                        'color': node.brush().color().name()
+                        'color': node.brush().color().name(),
+                        'name': node.name if hasattr(node, 'name') else None,
+                        'item_label': node.item_label.toPlainText() if hasattr(node, 'item_label') else None
                     }
                     scenario_data['nodes'].append(node_data)
 
             # Save the scenario data to a JSON file
-            scenario_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
-            with open(scenario_file, 'w') as f:
+            json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
+            with open(json_file, 'w') as f:
                 json.dump(scenario_data, f)
+
+            # Generate and save warehouse data CSV
+            if hasattr(self, 'item_nodes'):
+                warehouse_data = []
+                for node_info in self.item_nodes:
+                    node = node_info['node']
+                    aisle_shelf_loc = node.name.split('_')  # Split "Aisle_1_Shelf_2_A" format
+                    if len(aisle_shelf_loc) >= 5:
+                        warehouse_data.append({
+                            'Aisle_Number': f"{aisle_shelf_loc[0]}_{aisle_shelf_loc[1]}",
+                            'Shelf_Number': f"{aisle_shelf_loc[2]}_{aisle_shelf_loc[3]}",
+                            'Shelf_Location': aisle_shelf_loc[4],
+                            'Item': node_info['item'],
+                            'Quantity': random.randint(1, 100),  # Maintain random quantity
+                            'Is_Shelf_Empty': False
+                        })
+
+                # Save warehouse data to CSV
+                csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
+                df_warehouse = pd.DataFrame(warehouse_data)
+                df_warehouse.to_csv(csv_file, index=False)
 
             # Update the load dropdown
             self.load_scenarios()
@@ -2157,12 +2282,15 @@ class WarehouseVisualizer(QMainWindow):
         if scenario_name == "Select Scenario":
             return
 
-        scenario_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
-        if not os.path.exists(scenario_file):
+        json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
+        csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
+
+        if not os.path.exists(json_file):
             QMessageBox.warning(self, "Error", f"Scenario file '{scenario_name}' not found.")
             return
 
-        with open(scenario_file, 'r') as f:
+        # Load JSON scenario data
+        with open(json_file, 'r') as f:
             scenario_data = json.load(f)
 
         # Load the scenario data
@@ -2177,18 +2305,55 @@ class WarehouseVisualizer(QMainWindow):
         self.shelf_spinbox.setValue(self.max_shelves_per_aisle)
         self.layout_dropdown.setCurrentText(scenario_data['layout_type'])
 
+        # Clear item dropdown and nodes
+        self.item_dropdown.clear()
+        self.item_dropdown.addItem("Select Item")
+        self.item_nodes = []
+
         # Reinitialize the grid
         self.init_grid()
 
-        # Set nodes
+        # Set nodes and their properties
         for node_data in scenario_data['nodes']:
             x = node_data['x']
             y = node_data['y']
             node = self.grid[y][x]
             node.is_obstacle = node_data['is_obstacle']
             node.is_aisle = node_data['is_aisle']
+            node.name = node_data.get('name', '')
             color = QColor(node_data['color'])
             node.setBrush(QBrush(color))
+
+            # Set item label if it exists
+            if node_data.get('item_label'):
+                node.set_item_label(node_data['item_label'])
+
+        # Load warehouse data from CSV if it exists
+        if os.path.exists(csv_file):
+            warehouse_df = pd.read_csv(csv_file)
+            for _, row in warehouse_df.iterrows():
+                item = row['Item']
+                if item and not pd.isna(item):
+                    aisle_num = int(row['Aisle_Number'].split('_')[1])
+                    shelf_num = int(row['Shelf_Number'].split('_')[1])
+                    shelf_loc = row['Shelf_Location']
+
+                    # Add item to dropdown
+                    self.item_dropdown.addItem(
+                        f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})"
+                    )
+
+                    # Find corresponding node and add to item_nodes
+                    for node in [n for row in self.grid for n in row]:
+                        if (node.name == f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"):
+                            node_info = {
+                                'node': node,
+                                'item': item,
+                                'x': int(node.pos().x() // self.node_size),
+                                'y': int(node.pos().y() // self.node_size)
+                            }
+                            self.item_nodes.append(node_info)
+                            break
 
         # Set start and end nodes
         self.start_node = None
@@ -2206,8 +2371,7 @@ class WarehouseVisualizer(QMainWindow):
             self.end_node = self.grid[y][x]
             self.end_node.set_as_end()
 
-        self.adjust_zoom()  # Adjust the zoom level
-
+        self.adjust_zoom()
         QMessageBox.information(self, "Scenario Loaded", f"Scenario '{scenario_name}' loaded successfully.")
 
     def load_scenarios(self):
