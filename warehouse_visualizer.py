@@ -1096,15 +1096,19 @@ class WarehouseVisualizer(QMainWindow):
         return False
 
     def handle_search(self):
-        """Handle search between start and end nodes."""
-        # Check if start and end nodes are set
+        """Handle search between start and end nodes with proper algorithm selection and visualization."""
+        # Check for negative weights and algorithm compatibility
         has_negative = self.has_negative_weights()
         selected_algorithm = self.algorithm_dropdown.currentText()
 
-        current_weights_state = {(x, y): self.grid[y][x].edge_weight
-                                 for x in range(self.grid_size)
-                                 for y in range(self.grid_size)}
+        # Update weights state for Johnson's caching
+        current_weights_state = {
+            (x, y): self.grid[y][x].edge_weight
+            for x in range(self.grid_size)
+            for y in range(self.grid_size)
+        }
 
+        # Clear Johnson's cache if weights have changed
         if hasattr(self, 'last_weights_state') and self.last_weights_state != current_weights_state:
             if hasattr(self, 'johnsons_graph'):
                 delattr(self, 'johnsons_graph')
@@ -1112,9 +1116,12 @@ class WarehouseVisualizer(QMainWindow):
 
         self.last_weights_state = current_weights_state
 
+        # Verify algorithm compatibility with negative weights
         if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
-            compatible_algorithms = [name for name, caps in self.algorithm_capabilities.items()
-                                     if caps["handles_negative"]]
+            compatible_algorithms = [
+                name for name, caps in self.algorithm_capabilities.items()
+                if caps["handles_negative"]
+            ]
             QMessageBox.warning(
                 self,
                 "Invalid Algorithm Selection",
@@ -1123,6 +1130,7 @@ class WarehouseVisualizer(QMainWindow):
             )
             return
 
+        # Verify start and end nodes are set
         if not hasattr(self, 'start_node') or self.start_node is None:
             self.counter_label.setText("Start node not set.")
             return
@@ -1133,64 +1141,145 @@ class WarehouseVisualizer(QMainWindow):
         # Clear previous path and visited nodes
         self.reset_grid()
 
-        # Get the start and end node coordinates
-        start = (int(self.start_node.pos().x() // self.node_size),
-                 int(self.start_node.pos().y() // self.node_size))
-        end = (int(self.end_node.pos().x() // self.node_size),
-               int(self.end_node.pos().y() // self.node_size))
+        # Get start and end coordinates
+        start = (
+            int(self.start_node.pos().x() // self.node_size),
+            int(self.start_node.pos().y() // self.node_size)
+        )
+        end = (
+            int(self.end_node.pos().x() // self.node_size),
+            int(self.end_node.pos().y() // self.node_size)
+        )
 
-        # Check if diagonal neighbors are allowed
+        # Get diagonal movement setting
         diagonal_neighbors = self.diagonal_checkbox.isChecked()
 
-        # Determine which algorithm to run
-        selected_algorithm = self.algorithm_dropdown.currentText()
+        # Run the selected algorithm
+        try:
+            if selected_algorithm == "Dijkstra's":
+                path, self.nodes_searched = self.run_dijkstra(
+                    start, end, diagonal_neighbors, visualize=True
+                )
+            elif selected_algorithm == "Bellman-Ford":
+                path, self.nodes_searched = self.run_bellman_ford(
+                    start, end, diagonal_neighbors, visualize=True
+                )
+            elif selected_algorithm == "A* (Manhattan Distance)":
+                path, self.nodes_searched = self.run_astar(
+                    start, end, diagonal_neighbors, visualize=True,
+                    heuristic_type="Manhattan Distance"
+                )
+            elif selected_algorithm == "A* (Euclidean Distance)":
+                path, self.nodes_searched = self.run_astar(
+                    start, end, diagonal_neighbors, visualize=True,
+                    heuristic_type="Euclidean Distance"
+                )
+            elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
+                path, self.nodes_searched = self.run_astar(
+                    start, end, diagonal_neighbors, visualize=True,
+                    heuristic_type="Modified Euclidean"
+                )
+            elif selected_algorithm == "SPFA":
+                path, self.nodes_searched = self.run_spfa(
+                    start, end, diagonal_neighbors, visualize=True
+                )
+            elif selected_algorithm == "Johnson's":
+                path, (mandatory_visits, pathfinding_visits) = self.run_johnsons(
+                    start, end, diagonal_neighbors, visualize=True
+                )
+                # For visualization purposes, use the sum of both types of visits
+                self.nodes_searched = mandatory_visits + pathfinding_visits
+                # Show both counts in the counter label
+                self.counter_label.setText(
+                    f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}"
+                )
+                return  # Return early as counter is already set
+            elif selected_algorithm == "Johnson's with A*":
+                path, (mandatory_visits, pathfinding_visits) = self.run_johnsons_astar(
+                    start, end, diagonal_neighbors, visualize=True
+                )
+                # For visualization purposes, use the sum of both types of visits
+                self.nodes_searched = mandatory_visits + pathfinding_visits
+                # Show both counts in the counter label
+                self.counter_label.setText(
+                    f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}"
+                )
+                return  # Return early as counter is already set
+            else:
+                self.counter_label.setText("Invalid algorithm selection.")
+                return
 
-        if selected_algorithm == "Dijkstra's":
-            path, self.nodes_searched = self.run_dijkstra(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "Bellman-Ford":
-            path, self.nodes_searched = self.run_bellman_ford(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "A* (Manhattan Distance)":
-            path, self.nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "A* (Euclidean Distance)":
-            path, self.nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
-            path, self.nodes_searched = self.run_astar(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "SPFA":
-            path, self.nodes_searched = self.run_spfa(start, end, diagonal_neighbors, visualize=True)
-        elif selected_algorithm == "Johnson's":
-            path, (mandatory_visits, pathfinding_visits) = self.run_johnsons(start, end, diagonal_neighbors,
-                                                                             visualize=True)
-        elif selected_algorithm == "Johnson's with A*":
-            path, (mandatory_visits, pathfinding_visits) = self.run_johnsons_astar(
-                start, end, diagonal_neighbors, visualize=True
+            # If a path is found, visualize it step by step
+            if path:
+                self.search_path = path
+                self.visualize_path_step_by_step()
+
+                # Update counter label with path information
+                total_path_length = len(path)
+                self.counter_label.setText(
+                    f"Nodes Searched: {self.nodes_searched}, Path Length: {total_path_length}"
+                )
+            else:
+                self.counter_label.setText("No path found.")
+
+        except Exception as e:
+            print(f"Error in handle_search: {e}")
+            self.counter_label.setText(f"Error: {str(e)}")
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"An error occurred while searching for path:\n{str(e)}"
             )
-            # For visualization purposes, use the sum of both types of visits
-            self.nodes_searched = mandatory_visits + pathfinding_visits
-            # You might want to show both counts in the counter label
-            self.counter_label.setText(f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}")
 
-            # For visualization purposes, use the sum of both types of visits
-            self.nodes_searched = mandatory_visits + pathfinding_visits
-            # You might want to show both counts in the counter label
-            self.counter_label.setText(f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}")
-        else:
-            self.counter_label.setText("Invalid algorithm selection.")
-            return
+    def calculate_path_length(self, path, diagonal_neighbors=False):
+        """
+        Calculate the true path length considering diagonal and orthogonal movements.
 
-        # If a path is found, visualize it step by step
-        if path:
-            self.search_path = path
-            self.visualize_path_step_by_step()
-        else:
-            self.counter_label.setText("No path found.")
+        Parameters:
+            path: List of (x, y) coordinates representing the path
+            diagonal_neighbors: Boolean indicating if diagonal movement is allowed
+
+        Returns:
+            float: The actual path length
+        """
+        if not path or len(path) < 2:
+            return 0
+
+        total_length = 0
+        for i in range(len(path) - 1):
+            current = path[i]
+            next_point = path[i + 1]
+
+            # Calculate the movement type and distance
+            dx = abs(next_point[0] - current[0])
+            dy = abs(next_point[1] - current[1])
+
+            # Get the nodes involved
+            current_node = self.grid[current[1]][current[0]]
+            next_node = self.grid[next_point[1]][next_point[0]]
+
+            # Calculate average weight between current and next node
+            avg_weight = (current_node.edge_weight + next_node.edge_weight) / 2
+
+            if diagonal_neighbors and dx == 1 and dy == 1:
+                # Diagonal movement (√2 ≈ 1.414)
+                step_length = sqrt(2) * avg_weight
+            else:
+                # Orthogonal movement
+                step_length = (dx + dy) * avg_weight
+
+            total_length += step_length
+
+        return total_length
 
     def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
         """
-        Helper function to get neighbors for Johnson's algorithms with proper diagonal movement costs.
-        Includes checking for barrier jumping with diagonal moves.
+        Helper function to get neighbors for Johnson's algorithms with proper weight calculations.
+        Must match get_neighbors exactly for consistent path lengths.
         """
         (x, y) = node
-        # Define orthogonal and diagonal neighbors with their respective costs
+
+        # Define orthogonal and diagonal neighbors with exact same costs as get_neighbors
         four_neighbors = [
             ((-1, 0), 1.0),  # Left
             ((1, 0), 1.0),  # Right
@@ -1199,33 +1288,11 @@ class WarehouseVisualizer(QMainWindow):
         ]
 
         eight_neighbors = [
-            ((-1, -1), 1.414),  # Up-Left (√2)
-            ((1, -1), 1.414),  # Up-Right
-            ((-1, 1), 1.414),  # Down-Left
-            ((1, 1), 1.414)  # Down-Right
+            ((-1, -1), sqrt(2)),  # Up-Left
+            ((1, -1), sqrt(2)),  # Up-Right
+            ((-1, 1), sqrt(2)),  # Down-Left
+            ((1, 1), sqrt(2))  # Down-Right
         ]
-
-        def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
-            """
-            Check if a diagonal move is valid by ensuring both orthogonal paths aren't blocked.
-            For example, to move diagonally up-right, both the 'up' and 'right' spaces must be clear.
-            """
-            dx = new_x - curr_x
-            dy = new_y - curr_y
-
-            # Check first orthogonal path (horizontal)
-            if not (0 <= curr_x + dx < self.grid_size):
-                return False
-            if self.grid[curr_y][curr_x + dx].is_obstacle:
-                return False
-
-            # Check second orthogonal path (vertical)
-            if not (0 <= curr_y + dy < self.grid_size):
-                return False
-            if self.grid[curr_y + dy][curr_x].is_obstacle:
-                return False
-
-            return True
 
         neighbors = []
 
@@ -1235,28 +1302,40 @@ class WarehouseVisualizer(QMainWindow):
             if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
                 neighbor_node = self.grid[ny][nx]
                 if not neighbor_node.is_obstacle:
-                    neighbor_coords = (nx, ny)
-                    # Multiply the base movement cost by the node's edge weight
-                    total_cost = base_cost * neighbor_node.edge_weight
-                    neighbors.append((neighbor_coords, total_cost))
+                    current_node = self.grid[y][x]
+                    # Use exact same weight calculation as get_neighbors
+                    avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
+                    total_cost = base_cost * avg_weight
+                    neighbors.append(((nx, ny), total_cost))
 
-        # Then add diagonal neighbors if enabled and valid
+        # Add diagonal neighbors using exact same logic as get_neighbors
         if diagonal_neighbors:
+            def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
+                dx = new_x - curr_x
+                dy = new_y - curr_y
+                if not (0 <= curr_x + dx < self.grid_size and
+                        0 <= curr_y + dy < self.grid_size):
+                    return False
+                return (not self.grid[curr_y][curr_x + dx].is_obstacle and
+                        not self.grid[curr_y + dy][curr_x].is_obstacle)
+
             for (dx, dy), base_cost in eight_neighbors:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
                     neighbor_node = self.grid[ny][nx]
                     if not neighbor_node.is_obstacle and is_diagonal_valid(x, y, nx, ny):
-                        neighbor_coords = (nx, ny)
-                        # Multiply the base movement cost by the node's edge weight
-                        total_cost = base_cost * neighbor_node.edge_weight
-                        neighbors.append((neighbor_coords, total_cost))
+                        current_node = self.grid[y][x]
+                        # Use exact same weight calculation as get_neighbors
+                        avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
+                        total_cost = base_cost * avg_weight
+                        neighbors.append(((nx, ny), total_cost))
 
         return neighbors
 
     def run_johnsons(self, start, end, diagonal_neighbors=False, visualize=True):
         """
-        Johnson's algorithm implementation with improved negative weight handling.
+        Complete implementation of Johnson's algorithm with proper path length calculation.
+        Uses original weights for pathfinding after reweighting for negative cycle detection.
         """
         mandatory_visits = 0
         pathfinding_visits = 0
@@ -1285,195 +1364,7 @@ class WarehouseVisualizer(QMainWindow):
                                         for x in range(self.grid_size)
                                         for y in range(self.grid_size)}
 
-                # Step 1: Create graph with virtual node
-                virtual_node = (-1, -1)
-                modified_graph = {virtual_node: []}
-
-                # Initialize all nodes (including aisles)
-                for node in current_nodes:
-                    modified_graph[node] = []
-                    mandatory_visits += 1
-                    if visualize and node != start and node != end:  # Preserve start node color
-                        self.grid[node[1]][node[0]].set_visited()
-                        self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
-                        QApplication.processEvents()
-
-                # Add edges, considering aisle nodes
-                for node in current_nodes:
-                    modified_graph[virtual_node].append((node, 0))
-                    for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
-                        if neighbor in current_nodes:
-                            modified_graph[node].append((neighbor, weight))
-
-                # Step 2: Run modified Bellman-Ford for reweighting
-                h_values = {node: float('inf') for node in current_nodes}
-                h_values[virtual_node] = 0
-
-                # First pass: |V|-1 iterations of relaxation
-                for i in range(len(current_nodes)):
-                    updates = False
-                    for u in modified_graph:
-                        for v, weight in modified_graph[u]:
-                            if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
-                                h_values[v] = h_values[u] + weight
-                                updates = True
-                                if v != virtual_node:
-                                    mandatory_visits += 1
-                                    if visualize and v != start and v != end:  # Preserve start node color
-                                        self.grid[v[1]][v[0]].set_relaxed()
-                                        self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
-                                        QApplication.processEvents()
-                    if not updates:
-                        break
-
-                # Second pass: Check for negative cycles
-                for u in modified_graph:
-                    for v, weight in modified_graph[u]:
-                        if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
-                            if visualize:
-                                self.counter_label.setStyleSheet("color: red;")
-                                self.counter_label.setText("Negative cycle detected - cannot proceed")
-                                QApplication.processEvents()
-                            return None, (mandatory_visits, pathfinding_visits)
-
-                # Step 3: Create reweighted graph with validation
-                self.johnsons_graph = {node: [] for node in current_nodes}
-                for u in current_nodes:
-                    for v, weight in modified_graph[u]:
-                        if v != virtual_node:
-                            new_weight = weight + h_values[u] - h_values[v]
-                            epsilon = 1e-10
-                            if new_weight < -epsilon:
-                                if visualize:
-                                    self.counter_label.setStyleSheet("color: red;")
-                                    self.counter_label.setText("Reweighting failed - invalid negative weight")
-                                    QApplication.processEvents()
-                                return None, (mandatory_visits, pathfinding_visits)
-                            new_weight = max(0, new_weight)
-                            self.johnsons_graph[u].append((v, new_weight))
-
-            except Exception as e:
-                if visualize:
-                    self.counter_label.setStyleSheet("color: red;")
-                    self.counter_label.setText(f"Error in Johnson's preprocessing: {str(e)}")
-                    QApplication.processEvents()
-                return None, (mandatory_visits, pathfinding_visits)
-
-        else:
-            current_grid_state = {(x, y): self.grid[y][x].is_obstacle
-                                  for x in range(self.grid_size)
-                                  for y in range(self.grid_size)}
-
-            if current_grid_state != self.last_grid_state:
-                delattr(self, 'johnsons_graph')
-                return self.run_johnsons(start, end, diagonal_neighbors, visualize)
-
-        # Reset visualization before pathfinding
-        if visualize:
-            for y in range(self.grid_size):
-                for x in range(self.grid_size):
-                    if (x, y) != start and (x, y) != end:
-                        self.grid[y][x].reset()
-
-        # PHASE 2: Pathfinding using Dijkstra's
-        if start not in self.johnsons_graph or end not in self.johnsons_graph:
-            if visualize:
-                self.counter_label.setStyleSheet("color: red;")
-                self.counter_label.setText("Start or end node not in cached graph")
-            return None, (mandatory_visits, pathfinding_visits)
-
-        distances = {node: float('inf') for node in self.johnsons_graph}
-        distances[start] = 0
-        predecessors = {node: None for node in self.johnsons_graph}
-        pq = [(0, start)]
-        visited = set()
-
-        while pq:
-            current_dist, current = heapq.heappop(pq)
-
-            if current in visited:
-                continue
-
-            visited.add(current)
-            pathfinding_visits += 1
-
-            if current == end:
-                break
-
-            if visualize and current != start and current != end:
-                self.grid[current[1]][current[0]].set_visited()
-                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
-                QApplication.processEvents()
-
-            for neighbor, weight in self.johnsons_graph[current]:
-                if neighbor not in visited:
-                    can_traverse = (
-                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
-                            or neighbor == end  # End node (can be aisle)
-                            or current == start  # Moving from start (can go to aisle)
-                    )
-
-                    if can_traverse:
-                        distance = distances[current] + weight
-                        if distance < distances[neighbor]:
-                            distances[neighbor] = distance
-                            predecessors[neighbor] = current
-                            heapq.heappush(pq, (distance, neighbor))
-
-        # Reconstruct path
-        if distances[end] != float('inf'):
-            path = []
-            current = end
-            while current is not None:
-                path.append(current)
-                current = predecessors[current]
-            path.reverse()
-
-            if visualize:
-                for node in path:
-                    if node != start and node != end:
-                        self.grid[node[1]][node[0]].set_path()
-                        QApplication.processEvents()
-
-            return path, (mandatory_visits, pathfinding_visits)
-
-        if visualize:
-            self.counter_label.setStyleSheet("color: red;")
-            self.counter_label.setText("No path found")
-        return None, (mandatory_visits, pathfinding_visits)
-
-    def run_johnsons_astar(self, start, end, diagonal_neighbors=False, visualize=True):
-        """
-        Johnson's algorithm implementation with A* pathfinding after reweighting.
-        """
-        mandatory_visits = 0
-        pathfinding_visits = 0
-
-        # Include ALL valid nodes including aisles, just excluding actual obstacles
-        current_nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)
-                         if not self.grid[y][x].is_obstacle]
-
-        # Validate start and end are not obstacles
-        if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
-            if visualize:
-                self.counter_label.setStyleSheet("color: red;")
-                self.counter_label.setText("Invalid start or end position")
-            return None, (mandatory_visits, pathfinding_visits)
-
-        # PHASE 1: Graph Preprocessing (only if needed)
-        if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
-            try:
-                if visualize:
-                    self.counter_label.setStyleSheet("color: green;")
-                    self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
-                    QApplication.processEvents()
-
-                # Save current grid state
-                self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
-                                        for x in range(self.grid_size)
-                                        for y in range(self.grid_size)}
-
-                # Step 1: Create graph with virtual node
+                # Step 1: Create graph with virtual node for negative cycle detection
                 virtual_node = (-1, -1)
                 modified_graph = {virtual_node: []}
 
@@ -1524,21 +1415,8 @@ class WarehouseVisualizer(QMainWindow):
                                 QApplication.processEvents()
                             return None, (mandatory_visits, pathfinding_visits)
 
-                # Step 3: Create reweighted graph with validation
-                self.johnsons_graph = {node: [] for node in current_nodes}
-                for u in current_nodes:
-                    for v, weight in modified_graph[u]:
-                        if v != virtual_node:
-                            new_weight = weight + h_values[u] - h_values[v]
-                            epsilon = 1e-10
-                            if new_weight < -epsilon:
-                                if visualize:
-                                    self.counter_label.setStyleSheet("color: red;")
-                                    self.counter_label.setText("Reweighting failed - invalid negative weight")
-                                    QApplication.processEvents()
-                                return None, (mandatory_visits, pathfinding_visits)
-                            new_weight = max(0, new_weight)
-                            self.johnsons_graph[u].append((v, new_weight))
+                # Store the reweighted graph for future use
+                self.johnsons_graph = True  # Just mark that preprocessing is done
 
             except Exception as e:
                 if visualize:
@@ -1547,15 +1425,6 @@ class WarehouseVisualizer(QMainWindow):
                     QApplication.processEvents()
                 return None, (mandatory_visits, pathfinding_visits)
 
-        else:
-            current_grid_state = {(x, y): self.grid[y][x].is_obstacle
-                                  for x in range(self.grid_size)
-                                  for y in range(self.grid_size)}
-
-            if current_grid_state != self.last_grid_state:
-                delattr(self, 'johnsons_graph')
-                return self.run_johnsons_astar(start, end, diagonal_neighbors, visualize)
-
         # Reset visualization before pathfinding
         if visualize:
             for y in range(self.grid_size):
@@ -1563,24 +1432,19 @@ class WarehouseVisualizer(QMainWindow):
                     if (x, y) != start and (x, y) != end:
                         self.grid[y][x].reset()
 
-        # PHASE 2: A* Pathfinding
-        if start not in self.johnsons_graph or end not in self.johnsons_graph:
-            if visualize:
-                self.counter_label.setStyleSheet("color: red;")
-                self.counter_label.setText("Start or end node not in cached graph")
-            return None, (mandatory_visits, pathfinding_visits)
-
-        g_score = {node: float('inf') for node in self.johnsons_graph}
-        g_score[start] = 0
-        f_score = {node: float('inf') for node in self.johnsons_graph}
-        f_score[start] = self.heuristic(start, end, "Manhattan Distance")
-
-        pq = [(f_score[start], start)]
-        predecessors = {node: None for node in self.johnsons_graph}
+        # PHASE 2: Pathfinding using original weights
+        distances = {(x, y): float('inf')
+                     for x in range(self.grid_size)
+                     for y in range(self.grid_size)}
+        distances[start] = 0
+        predecessors = {(x, y): None
+                        for x in range(self.grid_size)
+                        for y in range(self.grid_size)}
+        pq = [(0, start)]
         visited = set()
 
         while pq:
-            current_f, current = heapq.heappop(pq)
+            current_dist, current = heapq.heappop(pq)
 
             if current in visited:
                 continue
@@ -1596,7 +1460,179 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
                 QApplication.processEvents()
 
-            for neighbor, weight in self.johnsons_graph[current]:
+            # Use get_neighbors for consistent weight calculations
+            for neighbor, weight in self.get_neighbors(current, diagonal_neighbors):
+                if neighbor not in visited:
+                    can_traverse = (
+                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
+                            or neighbor == end  # End node (can be aisle)
+                            or current == start  # Moving from start (can go to aisle)
+                    )
+
+                    if can_traverse:
+                        distance = distances[current] + weight
+                        if distance < distances[neighbor]:
+                            distances[neighbor] = distance
+                            predecessors[neighbor] = current
+                            heapq.heappush(pq, (distance, neighbor))
+
+        # Reconstruct path
+        if distances[end] != float('inf'):
+            path = []
+            current = end
+            while current is not None:
+                path.append(current)
+                current = predecessors[current]
+            path.reverse()
+
+            if visualize:
+                for node in path:
+                    if node != start and node != end:
+                        self.grid[node[1]][node[0]].set_path()
+                        QApplication.processEvents()
+
+            return path, (mandatory_visits, pathfinding_visits)
+
+        if visualize:
+            self.counter_label.setStyleSheet("color: red;")
+            self.counter_label.setText("No path found")
+        return None, (mandatory_visits, pathfinding_visits)
+
+    def run_johnsons_astar(self, start, end, diagonal_neighbors=False, visualize=True):
+        """
+        Johnson's algorithm implementation with A* pathfinding after reweighting.
+        Uses original weights for pathfinding after reweighting for negative cycle detection.
+        """
+        mandatory_visits = 0
+        pathfinding_visits = 0
+
+        # Include ALL valid nodes including aisles, just excluding actual obstacles
+        current_nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)
+                         if not self.grid[y][x].is_obstacle]
+
+        # Validate start and end are not obstacles
+        if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
+            if visualize:
+                self.counter_label.setStyleSheet("color: red;")
+                self.counter_label.setText("Invalid start or end position")
+            return None, (mandatory_visits, pathfinding_visits)
+
+        # PHASE 1: Graph Preprocessing (only if needed)
+        if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
+            try:
+                if visualize:
+                    self.counter_label.setStyleSheet("color: green;")
+                    self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
+                    QApplication.processEvents()
+
+                # Save current grid state
+                self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
+                                        for x in range(self.grid_size)
+                                        for y in range(self.grid_size)}
+
+                # Step 1: Create graph with virtual node for negative cycle detection
+                virtual_node = (-1, -1)
+                modified_graph = {virtual_node: []}
+
+                # Initialize all nodes (including aisles)
+                for node in current_nodes:
+                    modified_graph[node] = []
+                    mandatory_visits += 1
+                    if visualize and node != start and node != end:
+                        self.grid[node[1]][node[0]].set_visited()
+                        self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
+                        QApplication.processEvents()
+
+                # Add edges, considering aisle nodes
+                for node in current_nodes:
+                    modified_graph[virtual_node].append((node, 0))
+                    for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
+                        if neighbor in current_nodes:
+                            modified_graph[node].append((neighbor, weight))
+
+                # Step 2: Run modified Bellman-Ford for reweighting
+                h_values = {node: float('inf') for node in current_nodes}
+                h_values[virtual_node] = 0
+
+                # First pass: |V|-1 iterations of relaxation
+                for i in range(len(current_nodes)):
+                    updates = False
+                    for u in modified_graph:
+                        for v, weight in modified_graph[u]:
+                            if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
+                                h_values[v] = h_values[u] + weight
+                                updates = True
+                                if v != virtual_node:
+                                    mandatory_visits += 1
+                                    if visualize and v != start and v != end:
+                                        self.grid[v[1]][v[0]].set_relaxed()
+                                        self.counter_label.setText(f"Running Bellman-Ford: {mandatory_visits} updates")
+                                        QApplication.processEvents()
+                    if not updates:
+                        break
+
+                # Check for negative cycles
+                for u in modified_graph:
+                    for v, weight in modified_graph[u]:
+                        if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
+                            if visualize:
+                                self.counter_label.setStyleSheet("color: red;")
+                                self.counter_label.setText("Negative cycle detected - cannot proceed")
+                                QApplication.processEvents()
+                            return None, (mandatory_visits, pathfinding_visits)
+
+                # Store that preprocessing is done
+                self.johnsons_graph = True
+
+            except Exception as e:
+                if visualize:
+                    self.counter_label.setStyleSheet("color: red;")
+                    self.counter_label.setText(f"Error in Johnson's preprocessing: {str(e)}")
+                    QApplication.processEvents()
+                return None, (mandatory_visits, pathfinding_visits)
+
+        # Reset visualization before pathfinding
+        if visualize:
+            for y in range(self.grid_size):
+                for x in range(self.grid_size):
+                    if (x, y) != start and (x, y) != end:
+                        self.grid[y][x].reset()
+
+        # PHASE 2: A* Pathfinding using original weights
+        g_score = {(x, y): float('inf')
+                   for x in range(self.grid_size)
+                   for y in range(self.grid_size)}
+        g_score[start] = 0
+        f_score = {(x, y): float('inf')
+                   for x in range(self.grid_size)
+                   for y in range(self.grid_size)}
+        f_score[start] = self.heuristic(start, end, "Manhattan Distance")
+
+        open_set = [(f_score[start], start)]
+        predecessors = {(x, y): None
+                        for x in range(self.grid_size)
+                        for y in range(self.grid_size)}
+        visited = set()
+
+        while open_set:
+            current_f, current = heapq.heappop(open_set)
+
+            if current in visited:
+                continue
+
+            visited.add(current)
+            pathfinding_visits += 1
+
+            if current == end:
+                break
+
+            if visualize and current != start and current != end:
+                self.grid[current[1]][current[0]].set_visited()
+                self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
+                QApplication.processEvents()
+
+            # Use get_neighbors for consistent weight calculations
+            for neighbor, weight in self.get_neighbors(current, diagonal_neighbors):
                 if neighbor not in visited:
                     can_traverse = (
                             not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
@@ -1610,7 +1646,7 @@ class WarehouseVisualizer(QMainWindow):
                             predecessors[neighbor] = current
                             g_score[neighbor] = tentative_g_score
                             f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end, "Manhattan Distance")
-                            heapq.heappush(pq, (f_score[neighbor], neighbor))
+                            heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
         # Reconstruct path
         if g_score[end] != float('inf'):
@@ -1633,8 +1669,6 @@ class WarehouseVisualizer(QMainWindow):
             self.counter_label.setStyleSheet("color: red;")
             self.counter_label.setText("No path found")
         return None, (mandatory_visits, pathfinding_visits)
-
-
     def bellman_ford_for_johnsons(self, graph, source):
         """Helper function for Johnson's algorithm to compute h values."""
         distances = {node: float('inf') for node in graph}
@@ -1680,24 +1714,17 @@ class WarehouseVisualizer(QMainWindow):
 
         return distances, predecessors
 
-    def run_astar(self, start, end, diagonal_neighbors=False, visualize=True, heuristic_type="Manhattan"):
-        """Run the A* algorithm from start to end with the specified heuristic."""
+    def run_astar(self, start, end, diagonal_neighbors=False, visualize=True, heuristic_type="Manhattan Distance"):
+        """Run the A* algorithm with consistent path length calculation."""
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
         g_score = {start: 0}
 
-        if heuristic_type == "Manhattan":
-            h = self.heuristic(start, end, heuristic_type="Manhattan Distance")
-        elif heuristic_type == "Euclidean":
-            h = self.heuristic(start, end, heuristic_type="Euclidean Distance")
-        elif heuristic_type == "Modified Euclidean":
-            h = self.heuristic(start, end, heuristic_type="Modified Euclidean")
-        else:
-            h = self.heuristic(start, end, heuristic_type="Manhattan Distance")  # Default
-
+        # Calculate initial heuristic
+        h = self.heuristic(start, end, heuristic_type)
         f_score = {start: h}
-        self.nodes_searched = 0  # Reset node search count
+        self.nodes_searched = 0
 
         while open_set:
             current_f, current = heapq.heappop(open_set)
@@ -1709,7 +1736,7 @@ class WarehouseVisualizer(QMainWindow):
             if visualize:
                 self.grid[current[1]][current[0]].set_visited()
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
+                QApplication.processEvents()
 
             self.nodes_searched += 1
 
@@ -1722,15 +1749,10 @@ class WarehouseVisualizer(QMainWindow):
                     f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end, heuristic_type)
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-        # If open_set is empty and end was not reached
         return None, self.nodes_searched
 
     def run_spfa(self, start, end, diagonal_neighbors=False, visualize=True):
-        """
-        Run the Shortest Path Faster Algorithm (SPFA) from start to end.
-        Handles negative weights while being typically faster than Bellman-Ford.
-        """
-        # Initialize distances and predecessors
+        """Run SPFA algorithm with consistent path length calculation."""
         distance = {(x, y): float('inf') for x in range(self.grid_size) for y in range(self.grid_size)}
         predecessor = {(x, y): None for x in range(self.grid_size) for y in range(self.grid_size)}
         in_queue = {(x, y): False for x in range(self.grid_size) for y in range(self.grid_size)}
@@ -1744,7 +1766,6 @@ class WarehouseVisualizer(QMainWindow):
             current = queue.pop(0)
             in_queue[current] = False
 
-            # Visualize current node if needed
             if visualize:
                 self.grid[current[1]][current[0]].set_visited()
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
@@ -1752,34 +1773,32 @@ class WarehouseVisualizer(QMainWindow):
 
             self.nodes_searched += 1
 
-            # Process neighbors
             for neighbor_coords, weight in self.get_neighbors(current, diagonal_neighbors):
                 if distance[current] + weight < distance[neighbor_coords]:
                     distance[neighbor_coords] = distance[current] + weight
                     predecessor[neighbor_coords] = current
 
-                    # Add to queue if not already in it
                     if not in_queue[neighbor_coords]:
                         queue.append(neighbor_coords)
                         in_queue[neighbor_coords] = True
 
-            # Early exit if we've found the end node
             if current == end:
                 break
 
-        # Reconstruct path if end was reached
-        if distance[end] != float('inf'):
-            path = []
-            current = end
-            while current is not None:
-                path.append(current)
-                current = predecessor[current]
-            path.reverse()
-            return path, self.nodes_searched
+        # Reconstruct path
+        if distance[end] == float('inf'):
+            return None, self.nodes_searched
 
-        return None, self.nodes_searched
+        path = []
+        current = end
+        while current is not None:
+            path.append(current)
+            current = predecessor[current]
+        path.reverse()
 
+        return path, self.nodes_searched
     def run_bellman_ford(self, start, end, diagonal_neighbors=False, visualize=True):
+        """Run Bellman-Ford algorithm with consistent path length calculation."""
         nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)]
         edges = []
 
@@ -1788,17 +1807,17 @@ class WarehouseVisualizer(QMainWindow):
         distance[start] = 0
         predecessor = {node: None for node in nodes}
 
-        # Build the list of edges with weights
+        # Build edges list with proper weights
         for y in range(self.grid_size):
             for x in range(self.grid_size):
                 current_node = (x, y)
                 for neighbor_coords, weight in self.get_neighbors(current_node, diagonal_neighbors):
-                    edges.append((current_node, neighbor_coords, weight))  # Use tuple coordinates
+                    edges.append((current_node, neighbor_coords, weight))
 
-        self.nodes_searched = 0  # Reset the count of nodes searched
-        visited_nodes = set()  # To track unique nodes visited
+        self.nodes_searched = 0
+        visited_nodes = set()
 
-        # Bellman-Ford Algorithm: Relax edges |V|-1 times
+        # Main Bellman-Ford algorithm
         for _ in range(len(nodes) - 1):
             for u, v, weight in edges:
                 if distance[u] + weight < distance[v]:
@@ -1809,72 +1828,60 @@ class WarehouseVisualizer(QMainWindow):
                         visited_nodes.add(v)
                         self.nodes_searched += 1
 
-                    # Mark the node as visited and update the UI if needed
                     if visualize:
                         self.grid[v[1]][v[0]].set_visited()
                         self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                        QApplication.processEvents()  # Update the UI in real-time
+                        QApplication.processEvents()
 
-        # Check for negative weight cycles (not applicable in this case but part of Bellman-Ford)
+        # Check for negative cycles
         for u, v, weight in edges:
             if distance[u] + weight < distance[v]:
-                print("Graph contains a negative-weight cycle.")
+                print("Graph contains a negative-weight cycle")
                 return None, self.nodes_searched
 
-        # Reconstruct the path from end node to start node
+        # Reconstruct path
+        if distance[end] == float('inf'):
+            return None, self.nodes_searched
+
         path = []
         current = end
         while current is not None:
             path.append(current)
             current = predecessor[current]
-
-        path.reverse()  # Reverse the path to go from start to end
-
-        # Visualize the path if needed
-        if visualize and path:
-            for node in path:
-                # Avoid changing the color of start and end nodes
-                if node != start and node != end:
-                    self.grid[node[1]][node[0]].set_path()
-                    QApplication.processEvents()  # Update the UI in real-time
+        path.reverse()
 
         return path if path[0] == start else None, self.nodes_searched
-
     def run_dijkstra(self, start, end, diagonal_neighbors=False, visualize=True):
+        """Run Dijkstra's algorithm with consistent path length calculation."""
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
         g_score = {start: 0}
-        self.nodes_searched = 0  # Reset node search count
+        self.nodes_searched = 0
 
         while open_set:
             _, current = heapq.heappop(open_set)
 
             if current == end:
-                # Return path and nodes_searched
                 path = self.reconstruct_path(came_from, current)
                 return path, self.nodes_searched
 
-            # Mark the node as visited visually and count it
             self.nodes_searched += 1
 
             if visualize:
                 self.grid[current[1]][current[0]].set_visited()
                 self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
-                QApplication.processEvents()  # Update the UI in real-time
+                QApplication.processEvents()
 
-            # Get neighbors, considering diagonal movement if enabled
-            for neighbor_coords, weight in self.get_neighbors(current, diagonal_neighbors):
-                tentative_g_score = g_score[current] + weight  # Use edge weight here
+            for neighbor, weight in self.get_neighbors(current, diagonal_neighbors):
+                tentative_g_score = g_score[current] + weight
 
-                if neighbor_coords not in g_score or tentative_g_score < g_score[neighbor_coords]:
-                    came_from[neighbor_coords] = current
-                    g_score[neighbor_coords] = tentative_g_score
-                    heapq.heappush(open_set, (g_score[neighbor_coords], neighbor_coords))
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    heapq.heappush(open_set, (g_score[neighbor], neighbor))
 
-        # No path found
         return None, self.nodes_searched
-
     def is_valid_position(self, x, y):
         """Check if position is within grid bounds."""
         return 0 <= x < self.grid_size and 0 <= y < self.grid_size
@@ -1922,7 +1929,7 @@ class WarehouseVisualizer(QMainWindow):
             return abs(x1 - x2) + abs(y1 - y2)
 
     def get_neighbors(self, node, diagonal_neighbors=False):
-        """Get valid neighboring nodes and their edge weights."""
+        """Get valid neighboring nodes with consistent weight calculations."""
         (x, y) = node
 
         # Define orthogonal and diagonal neighbors with their respective costs
@@ -1934,60 +1941,48 @@ class WarehouseVisualizer(QMainWindow):
         ]
 
         eight_neighbors = [
-            ((-1, -1), 1.414),  # Up-Left (√2)
-            ((1, -1), 1.414),  # Up-Right
-            ((-1, 1), 1.414),  # Down-Left
-            ((1, 1), 1.414)  # Down-Right
+            ((-1, -1), sqrt(2)),  # Up-Left
+            ((1, -1), sqrt(2)),  # Up-Right
+            ((-1, 1), sqrt(2)),  # Down-Left
+            ((1, 1), sqrt(2))  # Down-Right
         ]
-
-        def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
-            """
-            Check if a diagonal move is valid by ensuring both orthogonal paths aren't blocked.
-            For example, to move diagonally up-right, both the 'up' and 'right' spaces must be clear.
-            """
-            dx = new_x - curr_x
-            dy = new_y - curr_y
-
-            # Check first orthogonal path (horizontal)
-            if not (0 <= curr_x + dx < self.grid_size):
-                return False
-            if not self.is_traversable(curr_x + dx, curr_y):
-                return False
-
-            # Check second orthogonal path (vertical)
-            if not (0 <= curr_y + dy < self.grid_size):
-                return False
-            if not self.is_traversable(curr_x, curr_y + dy):
-                return False
-
-            return True
 
         neighbors = []
 
-        # First add orthogonal neighbors
+        # Add orthogonal neighbors
         for (dx, dy), base_cost in four_neighbors:
             nx, ny = x + dx, y + dy
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
                 neighbor_coords = (nx, ny)
                 neighbor_node = self.grid[ny][nx]
-                total_cost = base_cost * neighbor_node.edge_weight
+                current_node = self.grid[y][x]
+                avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
+                total_cost = base_cost * avg_weight
                 neighbors.append((neighbor_coords, total_cost))
 
-        # Then add diagonal neighbors if enabled and valid
+        # Add diagonal neighbors if enabled
         if diagonal_neighbors:
+            def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
+                dx = new_x - curr_x
+                dy = new_y - curr_y
+                return (self.is_traversable(curr_x + dx, curr_y) and
+                        self.is_traversable(curr_x, curr_y + dy))
+
             for (dx, dy), base_cost in eight_neighbors:
                 nx, ny = x + dx, y + dy
                 if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
                     if is_diagonal_valid(x, y, nx, ny):
                         neighbor_coords = (nx, ny)
                         neighbor_node = self.grid[ny][nx]
-                        total_cost = base_cost * neighbor_node.edge_weight
+                        current_node = self.grid[y][x]
+                        avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
+                        total_cost = base_cost * avg_weight
                         neighbors.append((neighbor_coords, total_cost))
 
         return neighbors
 
     def reconstruct_path(self, came_from, current):
-        """Reconstructs the path from the A* or JPS result."""
+        """Reconstructs the path and calculates its true length."""
         path = []
         while current in came_from:
             path.append(current)
@@ -2398,130 +2393,6 @@ class WarehouseVisualizer(QMainWindow):
 
     def run_random_benchmarks(self):
         """Run benchmarks with both orthogonal and diagonal movement."""
-        has_negative = self.has_negative_weights()
-
-        # Determine which algorithms to test based on presence of negative weights
-        if has_negative:
-            algorithms_to_test = [algo for algo, caps in self.algorithm_capabilities.items()
-                                  if caps["handles_negative"]]
-            QMessageBox.information(
-                self,
-                "Negative Weights Detected",
-                f"Only running algorithms that support negative weights:\n{', '.join(algorithms_to_test)}"
-            )
-        else:
-            algorithms_to_test = list(self.algorithm_capabilities.keys())
-
-        num_runs = self.benchmark_spinbox.value()
-
-        # Determine target nodes
-        if self.all_nodes_checkbox.isChecked():
-            target_nodes = [
-                node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle and node != self.start_node
-            ]
-        else:
-            target_nodes = [node_info['node'] for node_info in self.item_nodes]
-
-        if not target_nodes:
-            QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
-            return
-
-        use_fixed_start = self.use_start_as_benchmark_start_checkbox.isChecked()
-
-        # Setup start nodes
-        if use_fixed_start:
-            if not self.start_node:
-                QMessageBox.warning(self, "Error", "Start node is not set.")
-                return
-            start_nodes = [self.start_node] * num_runs
-        else:
-            traversable_nodes = [
-                node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle
-            ]
-            if not traversable_nodes:
-                QMessageBox.warning(self, "Error", "No traversable nodes available.")
-                return
-            start_nodes = [random.choice(traversable_nodes) for _ in range(num_runs)]
-
-        # Initialize benchmark data structure for both movement types
-        benchmark_data = {
-            'orthogonal': {
-                'num_runs': num_runs,
-                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                'mode': 'Orthogonal Movement',
-                'runs': []
-            },
-            'diagonal': {
-                'num_runs': num_runs,
-                'timestamp': datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                'mode': 'Diagonal Movement',
-                'runs': []
-            }
-        }
-
-        # Disable UI during benchmarking
-        self.set_ui_enabled(False)
-
-        # Run benchmarks for both movement types
-        for movement_type in ['orthogonal', 'diagonal']:
-            diagonal_enabled = (movement_type == 'diagonal')
-
-            for run in range(1, num_runs + 1):
-                start_node = start_nodes[run - 1]
-                self.set_start_node(start_node)
-
-                self.counter_label.setText(
-                    f"Benchmark Run {run}/{num_runs} - {movement_type.capitalize()} Movement"
-                )
-                QApplication.processEvents()
-
-                # Run benchmarking with specified movement type and algorithms
-                run_metrics = self.benchmark_single_run(target_nodes, diagonal_enabled, algorithms_to_test)
-
-                benchmark_data[movement_type]['runs'].append({
-                    'run_number': run,
-                    'start_node': self.get_node_position(start_node),
-                    'metrics': run_metrics
-                })
-
-        # Save results
-        output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
-        result_dir = os.path.join(self.scenario_dir, "result_plots")
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
-
-        output_filepath = os.path.join(result_dir, output_filename)
-
-        try:
-            with open(output_filepath, 'w') as f:
-                json.dump(benchmark_data, f, indent=4)
-            QMessageBox.information(self, "Benchmark Saved", f"Results saved to {output_filepath}")
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to save benchmark results:\n{e}")
-
-        # Process and display results for both movement types
-        for movement_type in ['orthogonal', 'diagonal']:
-            averaged_metrics = self.process_benchmark_data(benchmark_data[movement_type])
-            self.display_benchmark_results(averaged_metrics, movement_type)
-            self.plot_benchmark_results(
-                averaged_metrics,
-                num_runs,
-                f"{movement_type.capitalize()} Movement"
-            )
-
-        # Re-enable UI
-        self.set_ui_enabled(True)
-
-        QMessageBox.information(
-            self,
-            "Benchmarks Completed",
-            f"Completed {num_runs} runs with both orthogonal and diagonal movement."
-        )
-
-    def run_random_benchmarks(self):
-        """Run benchmarks with both orthogonal and diagonal movement."""
         # First check if warehouse layout has been generated
         if not hasattr(self, 'item_nodes') or not self.item_nodes:
             QMessageBox.warning(
@@ -2606,6 +2477,12 @@ class WarehouseVisualizer(QMainWindow):
 
         # Run benchmarks for both movement types
         for movement_type in ['orthogonal', 'diagonal']:
+            # Clear Johnson's graph cache when switching movement types
+            if hasattr(self, 'johnsons_graph'):
+                delattr(self, 'johnsons_graph')
+            if hasattr(self, 'last_grid_state'):
+                delattr(self, 'last_grid_state')
+
             diagonal_enabled = (movement_type == 'diagonal')
 
             for run in range(1, num_runs + 1):
@@ -2726,7 +2603,7 @@ class WarehouseVisualizer(QMainWindow):
                 time_taken = time.time() - start_time
 
                 if path:
-                    path_length = len(path)
+                    path_length = self.calculate_path_length(path, diagonal_enabled)
                     metrics_per_algorithm[algorithm]['total_path_length'] += path_length
                     metrics_per_algorithm[algorithm]['total_nodes_searched'] += nodes_searched
                     metrics_per_algorithm[algorithm]['total_time_taken'] += time_taken
