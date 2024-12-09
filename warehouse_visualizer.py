@@ -651,16 +651,10 @@ class WarehouseVisualizer(QMainWindow):
         """Handle changes to the diagonal movement checkbox."""
         new_diagonal_state = bool(state)
         if new_diagonal_state != self.current_diagonal_state:
-            # Clear the Johnson's graph cache when diagonal movement changes
-            if hasattr(self, 'johnsons_graph'):
-                delattr(self, 'johnsons_graph')
-            if hasattr(self, 'last_grid_state'):
-                delattr(self, 'last_grid_state')
-            print("Cleared Johnson's graph cache due to diagonal movement change")
+            print("Diagonal movement state changed.")
             self.current_diagonal_state = new_diagonal_state
 
-            # Reset the grid to clear any existing paths
-            self.reset_grid()
+
     def on_algorithm_changed(self, index):
         """Handle algorithm selection change."""
         # Reset grid while preserving start, end, and barriers
@@ -2413,27 +2407,21 @@ class WarehouseVisualizer(QMainWindow):
         # Initialize a dictionary to accumulate metrics
         accumulated_metrics = {}
 
-        for run in benchmark_data['runs']:
-            metrics = run['metrics']
-            for algorithm, alg_metrics in metrics.items():
-                if algorithm not in accumulated_metrics:
-                    accumulated_metrics[algorithm] = {
-                        'total_path_length': 0,
-                        'total_nodes_searched': 0,
-                        'total_time_taken': 0,
-                        'valid_runs': 0
-                    }
-
-                # Debugging: Print the keys of alg_metrics
-                print(f"Processing Algorithm: {algorithm}")
-                print(f"Available keys in alg_metrics: {alg_metrics.keys()}")
-
-                # Use the correct keys here
-                if alg_metrics['path_length'] is not None:
-                    accumulated_metrics[algorithm]['total_path_length'] += alg_metrics['path_length']
-                    accumulated_metrics[algorithm]['total_nodes_searched'] += alg_metrics['nodes_searched']
-                    accumulated_metrics[algorithm]['total_time_taken'] += alg_metrics['time_taken']
-                    accumulated_metrics[algorithm]['valid_runs'] += 1
+        for run in benchmark_data['runs']:  # Access the 'runs' list directly
+            algorithm = run['algorithm']  # Get the algorithm name
+            if algorithm not in accumulated_metrics:
+                accumulated_metrics[algorithm] = {
+                    'total_path_length': 0,
+                    'total_nodes_searched': 0,
+                    'total_time_taken': 0,
+                    'valid_runs': 0
+                }
+            # Access the metrics directly from the run dictionary
+            if run['avg_path_length'] is not None:
+                accumulated_metrics[algorithm]['total_path_length'] += run['avg_path_length']
+                accumulated_metrics[algorithm]['total_nodes_searched'] += run['avg_nodes_searched']
+                accumulated_metrics[algorithm]['total_time_taken'] += run['avg_time_taken']
+                accumulated_metrics[algorithm]['valid_runs'] += 1
 
         # Calculate averages
         averaged_metrics = {}
@@ -2572,7 +2560,7 @@ class WarehouseVisualizer(QMainWindow):
         print(f"Benchmark plots for {movement_type} saved in {plots_dir}")
 
     def run_random_benchmarks(self):
-        """Run benchmarks with both orthogonal and diagonal movement, generating a new warehouse for each run."""
+        """Run benchmarks with both orthogonal and diagonal movement, using the same graph for each run."""
         # First check if benchmarking parameters are set
         num_runs = self.benchmark_spinbox.value()
         if num_runs < 1:
@@ -2634,86 +2622,117 @@ class WarehouseVisualizer(QMainWindow):
         # Disable UI during benchmarking
         self.set_ui_enabled(False)
 
-        # Run benchmarks for both movement types
-        for movement_type in ['orthogonal', 'diagonal']:
-            diagonal_enabled = (movement_type == 'diagonal')
+        # Run benchmarks for each run
+        for run in range(1, num_runs + 1):
+            # Generate a unique filename for the warehouse layout
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            warehouse_filename = os.path.join(
+                self.scenario_dir,
+                f"benchmark_run_{run}_{timestamp}_warehouse.csv"
+            )
 
-            for run in range(1, num_runs + 1):
-                # Generate a unique filename for the warehouse layout
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                warehouse_filename = os.path.join(
-                    self.scenario_dir,
-                    f"benchmark_run_{run}_{timestamp}_warehouse.csv"
-                )
+            # Generate a new warehouse layout
+            selected_layout = self.layout_dropdown.currentText()
+            if selected_layout == "Vertical Aisles":
+                orientation = 'vertical'
+            elif selected_layout == "Horizontal Aisles":
+                orientation = 'horizontal'
+            elif selected_layout == "Mixed Aisles":
+                orientation = 'mixed'
+            else:
+                orientation = 'vertical'  # Default to vertical
 
-                # Generate a new warehouse layout
-                selected_layout = self.layout_dropdown.currentText()
-                if selected_layout == "Vertical Aisles":
-                    orientation = 'vertical'
-                elif selected_layout == "Horizontal Aisles":
-                    orientation = 'horizontal'
-                elif selected_layout == "Mixed Aisles":
-                    orientation = 'mixed'
-                else:
-                    orientation = 'vertical'  # Default to vertical
+            # Generate and set the new warehouse layout
+            self.generate_warehouse_layout(orientation=orientation, unique_filename=warehouse_filename)
 
-                # Generate and set the new warehouse layout
-                self.generate_warehouse_layout(orientation=orientation, unique_filename=warehouse_filename)
-
-                # After generating the layout, select the start node
-                if use_fixed_start:
-                    if not self.start_node:
-                        QMessageBox.warning(self, "Error", "Start node is not set.")
-                        self.set_ui_enabled(True)
-                        return
-                    start_node = self.start_node
-                else:
-                    traversable_nodes = [
-                        node for row in self.grid for node in row
-                        if not node.is_obstacle and not node.is_aisle
-                    ]
-                    if not traversable_nodes:
-                        QMessageBox.warning(self, "Error", "No traversable nodes available.")
-                        self.set_ui_enabled(True)
-                        return
-                    start_node = random.choice(traversable_nodes)
-
-                # Determine end node(s)
-                if self.all_nodes_checkbox.isChecked():
-                    # Benchmark against all traversable nodes except start
-                    current_target_nodes = [
-                        node for row in self.grid for node in row
-                        if not node.is_obstacle and not node.is_aisle and node != start_node
-                    ]
-                else:
-                    # Benchmark against item nodes
-                    current_target_nodes = [node_info['node'] for node_info in self.item_nodes]
-
-                if not current_target_nodes:
-                    QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
+            # After generating the layout, select the start node
+            if use_fixed_start:
+                if not self.start_node:
+                    QMessageBox.warning(self, "Error", "Start node is not set.")
                     self.set_ui_enabled(True)
                     return
+                start_node = self.start_node
+            else:
+                traversable_nodes = [
+                    node for row in self.grid for node in row
+                    if not node.is_obstacle and not node.is_aisle
+                ]
+                if not traversable_nodes:
+                    QMessageBox.warning(self, "Error", "No traversable nodes available.")
+                    self.set_ui_enabled(True)
+                    return
+                start_node = random.choice(traversable_nodes)
+
+            # Determine end node(s)
+            if self.all_nodes_checkbox.isChecked():
+                # Benchmark against all traversable nodes except start
+                current_target_nodes = [
+                    node for row in self.grid for node in row
+                    if not node.is_obstacle and not node.is_aisle and node != start_node
+                ]
+            else:
+                # Benchmark against item nodes
+                current_target_nodes = [node_info['node'] for node_info in self.item_nodes]
+
+            if not current_target_nodes:
+                QMessageBox.warning(self, "Error", "No target nodes available for benchmarking.")
+                self.set_ui_enabled(True)
+                return
+
+            for movement_type in ['orthogonal', 'diagonal']:
+                diagonal_enabled = (movement_type == 'diagonal')
+                movement_mode = 'Orthogonal Movement' if not diagonal_enabled else 'Diagonal Movement'
+
+                # Initialize run metrics for this movement type
+                run_metrics = {}
 
                 # For each target node, run the benchmark
                 for end_node in current_target_nodes:
                     # Set the start and end nodes
                     self.set_start_node(start_node)
-                    self.set_end_node(end_node)  # Implement this method similarly to set_start_node
+                    self.set_end_node(end_node)
 
                     self.counter_label.setText(
-                        f"Benchmark Run {run}/{num_runs} - {movement_type.capitalize()} Movement"
+                        f"Benchmark Run {run}/{num_runs} - {movement_mode}"
                     )
                     QApplication.processEvents()
 
                     # Run benchmarking with specified movement type and algorithms
-                    run_metrics = self.benchmark_single_run(start_node, end_node, diagonal_enabled, algorithms_to_test)
+                    single_run_metrics = self.benchmark_single_run(start_node, end_node, diagonal_enabled,
+                                                                   algorithms_to_test)
+
+                    # Accumulate metrics
+                    for algorithm, metrics in single_run_metrics.items():
+                        if algorithm not in run_metrics:
+                            run_metrics[algorithm] = {
+                                'path_length': 0,
+                                'nodes_searched': 0,
+                                'time_taken': 0,
+                                'valid_runs': 0
+                            }
+                        if metrics['path_length'] is not None:
+                            run_metrics[algorithm]['path_length'] += metrics['path_length']
+                            run_metrics[algorithm]['nodes_searched'] += metrics['nodes_searched']
+                            run_metrics[algorithm]['time_taken'] += metrics['time_taken']
+                            run_metrics[algorithm]['valid_runs'] += 1
+
+                # After all target nodes for this movement type, store the metrics
+                for algorithm, metrics in run_metrics.items():
+                    if metrics['valid_runs'] > 0:
+                        avg_path_length = metrics['path_length'] / metrics['valid_runs']
+                        avg_nodes_searched = metrics['nodes_searched'] / metrics['valid_runs']
+                        avg_time_taken = metrics['time_taken'] / metrics['valid_runs']
+                    else:
+                        avg_path_length = None
+                        avg_nodes_searched = None
+                        avg_time_taken = None
 
                     benchmark_data[movement_type]['runs'].append({
                         'run_number': run,
-                        'start_node': self.get_node_position(start_node),
-                        'end_node': self.get_node_position(end_node),
-                        'warehouse_file': warehouse_filename,
-                        'metrics': run_metrics
+                        'algorithm': algorithm,
+                        'avg_path_length': avg_path_length,
+                        'avg_nodes_searched': avg_nodes_searched,
+                        'avg_time_taken': avg_time_taken
                     })
 
         # Save results
