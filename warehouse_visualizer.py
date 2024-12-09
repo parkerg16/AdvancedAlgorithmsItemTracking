@@ -14,7 +14,8 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont
 import os
 import json
-import time  # Import time module for benchmarking
+import time
+
 
 
 def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=True, filename=None):
@@ -49,10 +50,10 @@ def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=
                         'Is_Shelf_Empty': False
                     })
 
-    # Convert the inventory data into a Pandas DataFrame
+
     df_inventory = pd.DataFrame(inventory_data)
 
-    # Optionally save the DataFrame to a CSV file for viewing
+
     if save_to_csv and filename:
         df_inventory.to_csv(filename, index=False)
         print(f"Warehouse layout saved to {filename}")
@@ -75,19 +76,19 @@ class Node(QGraphicsRectItem):
         super().__init__(0, 0, size, size)
         self.setPos(x * size, y * size)
         self.name = name
-        self.setBrush(QBrush(QColor(255, 255, 255)))  # Default color: White
+        self.setBrush(QBrush(QColor(255, 255, 255)))
         self.parent_window = parent_window
         self.is_obstacle = False
         self.is_start = False
         self.is_end = False
         self.edge_weight = 1  # Default edge weight
         self.is_aisle = False
-        self.last_scroll_time = time.time()  # For throttling wheel events
+        self.last_scroll_time = time.time()
         self.original_aisle_color = None
-        # Enable focus to capture wheel events
+
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsFocusable)
 
-        # Initialize edge weight label
+
         self.weight_label = QGraphicsTextItem(str(self.edge_weight), self)
         weight_font = QFont()
         weight_font.setPointSize(10)
@@ -271,7 +272,7 @@ class Node(QGraphicsRectItem):
                     delta = delta_y / 120  # Standard scroll value
                     old_weight = self.edge_weight
                     new_weight = min(10, max(-10, self.edge_weight + int(delta)))
-                    self.set_edge_weight(new_weight)  # Use new method
+                    self.set_edge_weight(new_weight)
                     print(f"Edge weight changed from {old_weight} to {self.edge_weight}")
                 self.last_scroll_time = current_time
         except Exception as e:
@@ -433,12 +434,14 @@ class WarehouseVisualizer(QMainWindow):
         super().__init__()
         self.is_generating_warehouse = False
 
+
         self.num_aisles = 5  # Default number of aisles
         self.max_shelves_per_aisle = 10  # Default max shelves per aisle
 
         self.node_size = 80
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene, self)
+
 
         self.grid = []
         self.spacing = 1  # Default spacing between aisles (hallway size)
@@ -530,9 +533,6 @@ class WarehouseVisualizer(QMainWindow):
         self.show_all_paths_button = QPushButton("Show All Paths", self)
         self.show_all_paths_button.clicked.connect(self.handle_show_all_paths)
 
-        # Remove the Benchmark Algorithms button
-        # self.benchmark_button = QPushButton("Benchmark Algorithms", self)
-        # self.benchmark_button.clicked.connect(self.benchmark_algorithms)
 
         self.random_benchmark_button = QPushButton("Run Random Benchmarks", self)
         self.random_benchmark_button.clicked.connect(self.run_random_benchmarks)
@@ -541,11 +541,10 @@ class WarehouseVisualizer(QMainWindow):
         self.diagonal_checkbox = QCheckBox("Allow Diagonal Neighbors", self)
         self.diagonal_checkbox.stateChanged.connect(self.handle_diagonal_change)
 
-        # Add a new checkbox for using start node or random node in benchmarks
         self.use_start_as_benchmark_start_checkbox = QCheckBox("Use Start Node for Benchmarks", self)
         self.use_start_as_benchmark_start_checkbox.setChecked(True)  # Default: Use start node
 
-        # *** Add a new checkbox for benchmarking mode ***
+
         self.all_nodes_checkbox = QCheckBox("Benchmark Against All Nodes", self)
         self.all_nodes_checkbox.setChecked(False)  # Default: Benchmark only item nodes
 
@@ -556,6 +555,7 @@ class WarehouseVisualizer(QMainWindow):
         # Layout setup
         layout = QVBoxLayout()
         layout.addWidget(self.view)
+
 
         # Spacing controls
         layout.addWidget(QLabel("Select Aisle Spacing:", self))
@@ -611,15 +611,13 @@ class WarehouseVisualizer(QMainWindow):
         benchmark_group.addLayout(benchmark_header)
 
         benchmark_buttons = QHBoxLayout()
-        # Remove the Benchmark Algorithms button from the layout
-        # benchmark_buttons.addWidget(self.benchmark_button)
+
         benchmark_buttons.addWidget(self.random_benchmark_button)
         benchmark_group.addLayout(benchmark_buttons)
 
-        # Add the new checkbox for using start node in benchmarks
         benchmark_group.addWidget(self.use_start_as_benchmark_start_checkbox)
 
-        # Add the existing checkbox for benchmarking mode
+
         benchmark_group.addWidget(self.all_nodes_checkbox)
 
         layout.addLayout(benchmark_group)
@@ -700,15 +698,15 @@ class WarehouseVisualizer(QMainWindow):
         total_width = self.grid_size * self.node_size
         total_height = self.grid_size * self.node_size
 
-        # Get the size of the view
+
         view_width = self.view.viewport().width()
         view_height = self.view.viewport().height()
 
-        # Calculate the scaling factors
+
         scale_x = view_width / total_width
         scale_y = view_height / total_height
 
-        # Use the smaller scaling factor to fit both dimensions
+
         scale = min(scale_x, scale_y) * 0.9  # Use 90% to add some padding
 
         self.view.scale(scale, scale)
@@ -748,7 +746,7 @@ class WarehouseVisualizer(QMainWindow):
         self.start_node = None
         self.end_node = None
 
-        # *** Clear Cached Johnson's Graph ***
+
         if hasattr(self, 'johnsons_graph'):
             del self.johnsons_graph
             print("Cleared cached Johnson's graph during clear_all.")
@@ -807,10 +805,10 @@ class WarehouseVisualizer(QMainWindow):
                     save_to_csv=True
                 )
 
-            # Clear the item dropdown and populate it with new items
-            self.item_dropdown.blockSignals(True)  # Block signals while populating the dropdown
-            self.item_dropdown.clear()  # Clear old items
-            self.item_dropdown.addItem("Select Item")  # Add default placeholder
+
+            self.item_dropdown.blockSignals(True)
+            self.item_dropdown.clear()
+            self.item_dropdown.addItem("Select Item")
 
             self.item_nodes = []  # Re-initialize item_nodes list
 
@@ -850,25 +848,25 @@ class WarehouseVisualizer(QMainWindow):
                     y = 2 + i * (self.spacing + 2)
                     # Adjust y to ensure it's offset from x positions
                     while y in vertical_positions or y + 1 in vertical_positions:
-                        y += 1  # Shift y to avoid overlap and maintain 1-block space
+                        y += 1
                     horizontal_positions.add(y)
                     aisle_positions.append(('horizontal', y))
 
                 max_x = max(max(vertical_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
                 max_y = max(max(horizontal_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
 
-            # Adjust max_x and max_y to ensure they are within reasonable limits
+
             max_x = min(max_x, 50)  # Set an upper limit for the grid size
             max_y = min(max_y, 50)
 
             # Update grid size
-            self.grid_size = max(int(max_x), int(max_y)) + 2  # Add buffer
+            self.grid_size = max(int(max_x), int(max_y)) + 2
             self.init_grid()  # Reinitialize the grid with the new size
 
             for i, row in warehouse_data.iterrows():
                 try:
-                    aisle_num = int(row['Aisle_Number'].split('_')[1])  # Extract aisle number
-                    shelf_num = int(row['Shelf_Number'].split('_')[1])  # Extract shelf number
+                    aisle_num = int(row['Aisle_Number'].split('_')[1])
+                    shelf_num = int(row['Shelf_Number'].split('_')[1])
                     shelf_loc = row['Shelf_Location']
                     item = row['Item'] if row['Item'] is not None else "Empty"
 
@@ -880,7 +878,7 @@ class WarehouseVisualizer(QMainWindow):
 
                     if orientation_type == 'vertical':
                         x = pos
-                        y = 2 + (shelf_num - 1)  # Adjust for grid layout (y-axis for shelves)
+                        y = 2 + (shelf_num - 1)  #
                         aisle_color = QColor(150, 150, 250)  # Light blue
                     else:  # Horizontal
                         x = 2 + (shelf_num - 1)
@@ -2187,7 +2185,7 @@ class WarehouseVisualizer(QMainWindow):
         self.step_index = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_step)
-        self.timer.start(100)  # 200 ms delay
+        self.timer.start(10)  # 200 ms delay
 
         # Display the total path length in addition to nodes searched
         total_path_length = len(self.search_path)
@@ -2245,13 +2243,7 @@ class WarehouseVisualizer(QMainWindow):
                     scenario_data['nodes'].append(node_data)
 
             # Save the scenario data to a JSON file
-            json_filename = f"{scenario_name}.json"
-            save_dir = os.path.join(self.scenario_dir, "saved_scenarios")
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-
-            json_file = os.path.join(save_dir, json_filename)
-            
+            json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
             with open(json_file, 'w') as f:
                 json.dump(scenario_data, f)
 
@@ -2272,11 +2264,7 @@ class WarehouseVisualizer(QMainWindow):
                         })
 
                 # Save warehouse data to CSV
-                warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
-                if not os.path.exists(warehouse_csv_dir):
-                    os.makedirs(warehouse_csv_dir)
-                
-                csv_file = os.path.join(warehouse_csv_dir, f"{scenario_name}_warehouse.csv")
+                csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
                 df_warehouse = pd.DataFrame(warehouse_data)
                 df_warehouse.to_csv(csv_file, index=False)
 
@@ -2298,16 +2286,8 @@ class WarehouseVisualizer(QMainWindow):
         if scenario_name == "Select Scenario":
             return
 
-        saved_scenario_dir = os.path.join(self.scenario_dir, "saved_scenarios")
-        if not os.path.exists(saved_scenario_dir):
-            os.makedirs(saved_scenario_dir)
-        
-        warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
-        if not os.path.exists(warehouse_csv_dir):
-            os.makedirs(warehouse_csv_dir)
-        
-        json_file = os.path.join(saved_scenario_dir, f"{scenario_name}.json")
-        csv_file = os.path.join(warehouse_csv_dir, f"{scenario_name}_warehouse.csv")
+        json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
+        csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
 
         if not os.path.exists(json_file):
             QMessageBox.warning(self, "Error", f"Scenario file '{scenario_name}' not found.")
@@ -2405,10 +2385,7 @@ class WarehouseVisualizer(QMainWindow):
         self.load_dropdown.clear()
         self.load_dropdown.addItem("Select Scenario")  # Default placeholder
 
-        saved_scenarios_dir = os.path.join(self.scenario_dir, "saved_scenarios")
-        if not os.path.exists(saved_scenarios_dir):
-            os.makedirs(saved_scenarios_dir)
-        scenario_files = [f for f in os.listdir(saved_scenarios_dir) if f.endswith('.json')]
+        scenario_files = [f for f in os.listdir(self.scenario_dir) if f.endswith('.json')]
         scenario_names = [os.path.splitext(f)[0] for f in scenario_files]
 
         self.load_dropdown.addItems(scenario_names)
@@ -2613,7 +2590,7 @@ class WarehouseVisualizer(QMainWindow):
         if self.all_nodes_checkbox.isChecked():
             target_nodes = [
                 node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle and node != self.start_node
+                if not node.is_obstacle and node != self.start_node
             ]
         else:
             target_nodes = [node_info['node'] for node_info in self.item_nodes]
@@ -2647,11 +2624,8 @@ class WarehouseVisualizer(QMainWindow):
         for run in range(1, num_runs + 1):
             # Generate a unique filename for the warehouse layout
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
-            if not os.path.exists(warehouse_csv_dir):
-                os.makedirs(warehouse_csv_dir)
             warehouse_filename = os.path.join(
-                warehouse_csv_dir,
+                self.scenario_dir,
                 f"benchmark_run_{run}_{timestamp}_warehouse.csv"
             )
 
@@ -2692,7 +2666,7 @@ class WarehouseVisualizer(QMainWindow):
                 # Benchmark against all traversable nodes except start
                 current_target_nodes = [
                     node for row in self.grid for node in row
-                    if not node.is_obstacle and not node.is_aisle and node != start_node
+                    if not node.is_obstacle and node != start_node
                 ]
             else:
                 # Benchmark against item nodes
@@ -2761,7 +2735,7 @@ class WarehouseVisualizer(QMainWindow):
 
         # Save results
         output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
-        result_dir = os.path.join(self.scenario_dir, "benchmark_results")
+        result_dir = os.path.join(self.scenario_dir, "result_plots")
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)
 
@@ -2831,7 +2805,6 @@ class WarehouseVisualizer(QMainWindow):
                     path, nodes_searched = self.run_dijkstra(start_coords, end_coords, diagonal_enabled,
                                                              visualize=False)
                 elif algorithm.startswith("A*"):
-                    # Extract heuristic type
                     heuristic_type = algorithm.split("(")[1].split(")")[0].strip()
                     path, nodes_searched = self.run_astar(start_coords, end_coords, diagonal_enabled, visualize=False,
                                                           heuristic_type=heuristic_type)
@@ -2852,9 +2825,9 @@ class WarehouseVisualizer(QMainWindow):
 
                 time_taken = time.time() - start_time
 
-                # Handle cases where 'nodes_searched' might be a tuple
+
                 if isinstance(nodes_searched, tuple):
-                    nodes_searched = sum(nodes_searched)  # Sum the tuple elements
+                    nodes_searched = sum(nodes_searched)
 
                 if path:
                     path_length = self.calculate_path_length(path, diagonal_enabled)
@@ -2892,7 +2865,7 @@ class WarehouseVisualizer(QMainWindow):
                 results_str += f"  - Average Nodes Searched: {metrics['avg_nodes_searched']:.2f}\n"
                 results_str += f"  - Average Time Taken: {metrics['avg_time_taken']:.4f} seconds\n"
 
-                # Add Johnson's specific metrics if available
+
                 if 'avg_mandatory_visits' in metrics and metrics['avg_mandatory_visits'] is not None:
                     results_str += f"  - Average Mandatory Visits: {metrics['avg_mandatory_visits']:.2f}\n"
                 if 'avg_pathfinding_visits' in metrics and metrics['avg_pathfinding_visits'] is not None:
@@ -2900,11 +2873,10 @@ class WarehouseVisualizer(QMainWindow):
             else:
                 results_str += "  - No valid paths found.\n"
 
-        # Show results in a message box
-        QMessageBox.information(self, f"Benchmark Results - {movement_type}", results_str)
-        print(results_str)  # Also print to console for debugging
 
-    # *** New Method Addition Start ***
+        QMessageBox.information(self, f"Benchmark Results - {movement_type}", results_str)
+        print(results_str)
+
     def handle_show_all_paths(self):
         print("handle_show_all_paths called")
         if not self.start_node:
@@ -2912,11 +2884,10 @@ class WarehouseVisualizer(QMainWindow):
             QMessageBox.warning(self, "Error", "Start node not set.")
             return
 
-        # Determine target nodes based on the 'all_nodes_checkbox' state
         if self.all_nodes_checkbox.isChecked():
             self.all_target_nodes = [
                 node for row in self.grid for node in row
-                if not node.is_obstacle and not node.is_aisle and node != self.start_node
+                if not node.is_obstacle and node != self.start_node
             ]
             print(f"All nodes selected for benchmarking: {len(self.all_target_nodes)} targets")
         else:
@@ -2957,7 +2928,7 @@ class WarehouseVisualizer(QMainWindow):
             print("Selected algorithm cannot handle negative weights")
             return
 
-        # Disable UI elements to prevent interference during the operation
+
         self.set_ui_enabled(False)
         print("UI elements disabled for Show All Paths operation")
 
@@ -2969,7 +2940,7 @@ class WarehouseVisualizer(QMainWindow):
         # Initialize a timer to handle path visualization sequentially
         self.all_paths_timer = QTimer(self)
         self.all_paths_timer.timeout.connect(self.visualize_next_path)
-        self.all_paths_timer.start(200)  # 100 ms delay between paths
+        self.all_paths_timer.start(10)  # 100 ms delay between paths
 
         # Optionally, reset any existing paths before starting
         self.reset_grid()
