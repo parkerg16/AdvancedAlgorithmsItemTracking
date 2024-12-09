@@ -19,7 +19,7 @@ import time
 
 
 def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=True, filename=None):
-    """Generate warehouse data with aisles and shelves and save it as a CSV file."""
+    
     shelf_locations = ['A', 'B', 'C', 'D']
 
     inventory_data = []
@@ -63,16 +63,7 @@ def generate_warehouse_data(num_aisles=5, max_shelves_per_aisle=10, save_to_csv=
 
 class Node(QGraphicsRectItem):
     def __init__(self, x, y, size, name, parent_window):
-        """
-        Initialize a Node instance.
-
-        Parameters:
-            x (int): The x-coordinate in the grid.
-            y (int): The y-coordinate in the grid.
-            size (int): The size of the node (width and height).
-            name (str): The name identifier for the node.
-            parent_window (WarehouseVisualizer): Reference to the main window.
-        """
+        
         super().__init__(0, 0, size, size)
         self.setPos(x * size, y * size)
         self.name = name
@@ -81,7 +72,7 @@ class Node(QGraphicsRectItem):
         self.is_obstacle = False
         self.is_start = False
         self.is_end = False
-        self.edge_weight = 1  # Default edge weight
+        self.edge_weight = 1  
         self.is_aisle = False
         self.last_scroll_time = time.time()
         self.original_aisle_color = None
@@ -95,24 +86,24 @@ class Node(QGraphicsRectItem):
         weight_font.setBold(True)
         self.weight_label.setFont(weight_font)
 
-        # Center the weight text within the node
+        
         self.update_weight_label_position()
 
-        # Initialize item label (for shelf items)
+        
         self.item_label = QGraphicsTextItem("", self)
         item_font = QFont()
         item_font.setPointSize(8)
         self.item_label.setFont(item_font)
-        self.item_label.setDefaultTextColor(QColor(0, 0, 0))  # Black color for item labels
+        self.item_label.setDefaultTextColor(QColor(0, 0, 0))  
 
-        # Initially hide the weight label if the node is an aisle
+        
         if self.is_aisle:
             self.weight_label.hide()
         if self.is_aisle:
             self.item_label.hide()
 
     def update_weight_label_position(self):
-        """Center the weight label within the node."""
+        
         text_rect = self.weight_label.boundingRect()
         node_rect = self.rect()
         self.weight_label.setPos(
@@ -121,7 +112,7 @@ class Node(QGraphicsRectItem):
         )
 
     def update_item_label_position(self):
-        """Center the item label within the node."""
+        
         text_rect = self.item_label.boundingRect()
         node_rect = self.rect()
         self.item_label.setPos(
@@ -130,36 +121,25 @@ class Node(QGraphicsRectItem):
         )
 
     def detect_negative_cycle_spfa(self, x, y, new_weight):
-        """
-        Check if changing the weight of node at (x,y) to new_weight would create a negative cycle.
-        Uses SPFA (Shortest Path Faster Algorithm) for efficient negative cycle detection.
-
-        Parameters:
-            x (int): X coordinate of the node being changed
-            y (int): Y coordinate of the node being changed
-            new_weight (float): The new weight to test
-
-        Returns:
-            bool: True if a negative cycle would be created, False otherwise
-        """
-        # Store the original weight
+        
+        
         original_weight = self.edge_weight
 
-        # Temporarily set the new weight
+        
         self.edge_weight = new_weight
 
-        # Get grid size from parent window
+        
         grid_size = self.parent_window.grid_size
 
-        # Initialize distance and count arrays
+        
         distance = {(i, j): float('inf') for i in range(grid_size) for j in range(grid_size)}
         count = {(i, j): 0 for i in range(grid_size) for j in range(grid_size)}
 
-        # Start from the changed node
+        
         start = (x, y)
         distance[start] = 0
 
-        # Initialize queue with start node
+        
         queue = [start]
         in_queue = {(i, j): False for i in range(grid_size) for j in range(grid_size)}
         in_queue[start] = True
@@ -167,29 +147,29 @@ class Node(QGraphicsRectItem):
         def get_neighbors(node):
             px, py = node
             neighbors = []
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # 4-directional neighbors
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  
                 nx, ny = px + dx, py + dy
                 if 0 <= nx < grid_size and 0 <= ny < grid_size:
                     if not self.parent_window.grid[ny][nx].is_obstacle:
                         neighbors.append((nx, ny))
             return neighbors
 
-        # Run SPFA
+        
         while queue:
             current = queue.pop(0)
             in_queue[current] = False
 
-            # Check each neighbor
+            
             for next_node in get_neighbors(current):
                 weight = self.parent_window.grid[next_node[1]][next_node[0]].edge_weight
                 if distance[current] + weight < distance[next_node]:
                     distance[next_node] = distance[current] + weight
                     count[next_node] += 1
 
-                    # If a node has been relaxed more times than number of nodes,
-                    # we've found a negative cycle
+                    
+                    
                     if count[next_node] >= grid_size * grid_size:
-                        # Restore original weight before returning
+                        
                         self.edge_weight = original_weight
                         return True
 
@@ -197,27 +177,25 @@ class Node(QGraphicsRectItem):
                         queue.append(next_node)
                         in_queue[next_node] = True
 
-        # Restore original weight before returning
+        
         self.edge_weight = original_weight
         return False
 
     def set_edge_weight(self, new_weight):
-        """
-        Set edge weight and check for negative cycles only under specific conditions.
-        """
+        
         x = int(self.pos().x() / self.parent_window.node_size)
         y = int(self.pos().y() / self.parent_window.node_size)
 
-        # Trigger cycle check only if necessary
+        
         if (
                 new_weight < 0 and
                 not self.is_aisle and
                 not self.parent_window.is_generating_warehouse and
-                (self.edge_weight >= 0 or new_weight < self.edge_weight)  # If newly negative or decreasing further
+                (self.edge_weight >= 0 or new_weight < self.edge_weight)  
         ):
-            # Check for negative cycles
+            
             if self.detect_negative_cycle_spfa(x, y, new_weight):
-                # Revert to a safe value if a cycle is detected
+                
                 new_weight = max(1, self.edge_weight)
                 QMessageBox.warning(
                     self.parent_window,
@@ -225,14 +203,12 @@ class Node(QGraphicsRectItem):
                     "This weight change would create a negative cycle and has been reverted."
                 )
 
-        # Update the edge weight and appearance
+        
         self.edge_weight = new_weight
         self.update_color_from_weight()
 
     def update_color_from_weight(self):
-        """
-        Update node color based on its current edge weight without cycle detection.
-        """
+        
         if not self.is_aisle:
             red_intensity = max(0, 255 - (self.edge_weight - 1) * 25)
             self._color = QColor(255, red_intensity, red_intensity)
@@ -243,12 +219,7 @@ class Node(QGraphicsRectItem):
                 self.update_weight_label_position()
 
     def set_item_label(self, text):
-        """
-        Set the item label text.
-
-        Parameters:
-            text (str): The text to display as the item label.
-        """
+        
         if self.is_aisle:
             self.item_label.hide()
             return
@@ -261,15 +232,13 @@ class Node(QGraphicsRectItem):
             self.item_label.hide()
 
     def wheelEvent(self, event):
-        """
-        Handle mouse wheel events to adjust the edge weight with throttling.
-        """
+        
         try:
             current_time = time.time()
-            if current_time - self.last_scroll_time > 0.1:  # 100ms delay
+            if current_time - self.last_scroll_time > 0.1:  
                 delta_y = event.delta()
                 if delta_y != 0:
-                    delta = delta_y / 120  # Standard scroll value
+                    delta = delta_y / 120  
                     old_weight = self.edge_weight
                     new_weight = min(10, max(-10, self.edge_weight + int(delta)))
                     self.set_edge_weight(new_weight)
@@ -279,12 +248,7 @@ class Node(QGraphicsRectItem):
             print(f"Error in wheelEvent: {e}")
 
     def mousePressEvent(self, event):
-        """
-        Handle mouse press events to set the node as start, end, or barrier based on current mode.
-
-        Parameters:
-            event (QGraphicsSceneMouseEvent): The mouse press event.
-        """
+        
         mode = self.parent_window.current_mode
         if mode == 'start':
             self.parent_window.set_start_node(self)
@@ -294,64 +258,57 @@ class Node(QGraphicsRectItem):
             self.set_as_barrier()
 
     def mouseMoveEvent(self, event):
-        """
-        Handle mouse move events to set nodes as barriers when in barrier mode.
-
-        Parameters:
-            event (QGraphicsSceneMouseEvent): The mouse move event.
-        """
+        
         mode = self.parent_window.current_mode
         if mode == 'barrier':
             self.set_as_barrier()
 
     def set_as_barrier(self):
-        """
-        Mark the node as a barrier (yellow) unless it's an aisle, start, or end node.
-        """
+        
         if not self.is_aisle and not self.is_start and not self.is_end:
-            self.setBrush(QBrush(QColor(255, 255, 0)))  # Yellow for barriers
+            self.setBrush(QBrush(QColor(255, 255, 0)))  
             self.is_obstacle = True
             if self.weight_label:
-                self.weight_label.hide()  # Hide weight label when node becomes a barrier
+                self.weight_label.hide()  
             if self.item_label:
-                self.item_label.hide()  # Hide item label when node becomes a barrier
+                self.item_label.hide()  
 
     def set_relaxed(self):
-        """Mark the node as relaxed (orange) during Bellman-Ford relaxation."""
+        
         if not self.is_aisle:
-            self.setBrush(QBrush(QColor(255, 165, 0)))  # Orange for relaxation
+            self.setBrush(QBrush(QColor(255, 165, 0)))  
         else:
             if not self.is_start and not self.is_end:
                 self.set_as_aisle(self.brush().color())
 
     def set_visited(self):
-        """Mark the node as visited (green) unless it's an aisle."""
+        
         if not self.is_aisle:
-            self.setBrush(QBrush(QColor(144, 238, 144)))  # Light green
+            self.setBrush(QBrush(QColor(144, 238, 144)))  
         else:
             if not self.is_start and not self.is_end:
                 self.set_as_aisle(self.brush().color())
 
     def set_path(self):
-        """Mark the node as part of the path (blue) unless it's an aisle."""
+        
         if not self.is_aisle:
-            self.setBrush(QBrush(QColor(0, 0, 255)))  # Blue when part of the path
+            self.setBrush(QBrush(QColor(0, 0, 255)))  
         else:
             if not self.is_start and not self.is_end:
-                self.set_as_aisle(self.brush().color())  # Retain aisle color
-            # If it's start or end, do not change the color
+                self.set_as_aisle(self.brush().color())  
+            
 
     def reset(self):
-        """Reset the node to its default visual state."""
+        
         if not self.is_obstacle and not self.is_start and not self.is_end:
             if not self.is_aisle:
-                self._color = QColor(255, 255, 255)  # White
+                self._color = QColor(255, 255, 255)  
                 self.setBrush(QBrush(self._color))
                 if self.weight_label:
                     self.weight_label.show()
                 if self.item_label:
                     self.item_label.show()
-                self.update_color_from_weight()  # Update color based on current weight
+                self.update_color_from_weight()  
             else:
                 if self.original_aisle_color:
                     self.set_as_aisle(self.original_aisle_color)
@@ -359,69 +316,60 @@ class Node(QGraphicsRectItem):
                     self.set_as_aisle(QColor(150, 150, 250))
 
     def set_as_start(self):
-        """
-        Set the node as the start node (green) and update relevant states.
-        """
-        # Prevent setting the same node as both start and end
+        
+        
         if self.parent_window.end_node == self:
             return
 
-        # Reset previous start node if it exists
+        
         if self.parent_window.start_node:
             self.parent_window.start_node.is_start = False
             self.parent_window.start_node.reset()
 
-        # Set the new start node
+        
         self.is_start = True
-        self.is_obstacle = False  # Start node should not be an obstacle
-        self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+        self.is_obstacle = False  
+        self.setBrush(QBrush(QColor(0, 255, 0)))  
         if self.weight_label:
-            self.weight_label.hide()  # Hide weight label when node becomes start
+            self.weight_label.hide()  
         if self.item_label:
-            self.item_label.hide()  # Hide item label when node becomes start
+            self.item_label.hide()  
 
-        # Update reference in parent window
+        
         self.parent_window.start_node = self
 
     def set_as_end(self):
-        """
-        Set the node as the end node (red) and update relevant states.
-        """
-        # Prevent setting the same node as both start and end
+        
+        
         if self.parent_window.start_node == self:
             return
 
-        # Reset previous end node if it exists
+        
         if self.parent_window.end_node:
             self.parent_window.end_node.is_end = False
             self.parent_window.end_node.reset()
 
-        # Set the new end node
+        
         self.is_end = True
-        self.is_obstacle = False  # End node should not be an obstacle
-        self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+        self.is_obstacle = False  
+        self.setBrush(QBrush(QColor(255, 0, 0)))  
         if self.weight_label:
-            self.weight_label.hide()  # Hide weight label when node becomes end
+            self.weight_label.hide()  
         if self.item_label:
-            self.item_label.hide()  # Hide item label when node becomes end
+            self.item_label.hide()  
 
-        # Update reference in parent window
+        
         self.parent_window.end_node = self
 
     def set_as_aisle(self, aisle_color):
-        """
-        Set the node as an aisle with the specified color.
-
-        Parameters:
-            aisle_color (QColor): The color to set for the aisle node.
-        """
+        
         self.original_aisle_color = aisle_color
         if self.is_start:
-            self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+            self.setBrush(QBrush(QColor(0, 255, 0)))  
         elif self.is_end:
-            self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+            self.setBrush(QBrush(QColor(255, 0, 0)))  
         else:
-            self.setBrush(QBrush(aisle_color))  # Use the passed aisle color
+            self.setBrush(QBrush(aisle_color))  
         self.is_aisle = True
         if self.weight_label:
             self.weight_label.hide()
@@ -435,8 +383,8 @@ class WarehouseVisualizer(QMainWindow):
         self.is_generating_warehouse = False
 
 
-        self.num_aisles = 5  # Default number of aisles
-        self.max_shelves_per_aisle = 10  # Default max shelves per aisle
+        self.num_aisles = 5  
+        self.max_shelves_per_aisle = 10  
 
         self.node_size = 80
         self.scene = QGraphicsScene()
@@ -444,21 +392,21 @@ class WarehouseVisualizer(QMainWindow):
 
 
         self.grid = []
-        self.spacing = 1  # Default spacing between aisles (hallway size)
-        self.current_mode = None  # Track mode for start, end, or barrier selection
+        self.spacing = 1  
+        self.current_mode = None  
         self.start_node = None
         self.end_node = None
         self.item_nodes = []
-        self.orientation_type = 'vertical'  # Default value
-        # Directory to store scenarios
+        self.orientation_type = 'vertical'  
+        
         self.scenario_dir = "scenarios"
         if not os.path.exists(self.scenario_dir):
             os.makedirs(self.scenario_dir)
 
         self.current_diagonal_state = False
 
-        # Initialize all UI elements
-        # Dropdowns
+        
+        
         self.spacing_dropdown = QComboBox(self)
         self.spacing_dropdown.addItems([str(i) for i in range(1, 4)])
         self.spacing_dropdown.currentIndexChanged.connect(self.update_spacing)
@@ -487,7 +435,7 @@ class WarehouseVisualizer(QMainWindow):
         self.item_dropdown.addItem("Select Item")
         self.item_dropdown.currentIndexChanged.connect(self.set_end_node_from_dropdown)
 
-        # Spin boxes
+        
         self.aisle_spinbox = QSpinBox(self)
         self.aisle_spinbox.setRange(1, 50)
         self.aisle_spinbox.setValue(self.num_aisles)
@@ -502,7 +450,7 @@ class WarehouseVisualizer(QMainWindow):
         self.benchmark_spinbox.setRange(1, 1000)
         self.benchmark_spinbox.setValue(1)
 
-        # Buttons
+        
         self.start_button = QPushButton("Set Start", self)
         self.start_button.clicked.connect(self.set_mode_start)
 
@@ -537,73 +485,73 @@ class WarehouseVisualizer(QMainWindow):
         self.random_benchmark_button = QPushButton("Run Random Benchmarks", self)
         self.random_benchmark_button.clicked.connect(self.run_random_benchmarks)
 
-        # Checkbox
+        
         self.diagonal_checkbox = QCheckBox("Allow Diagonal Neighbors", self)
         self.diagonal_checkbox.stateChanged.connect(self.handle_diagonal_change)
 
         self.use_start_as_benchmark_start_checkbox = QCheckBox("Use Start Node for Benchmarks", self)
-        self.use_start_as_benchmark_start_checkbox.setChecked(True)  # Default: Use start node
+        self.use_start_as_benchmark_start_checkbox.setChecked(True)  
 
 
         self.all_nodes_checkbox = QCheckBox("Benchmark Against All Nodes", self)
-        self.all_nodes_checkbox.setChecked(False)  # Default: Benchmark only item nodes
+        self.all_nodes_checkbox.setChecked(False)  
 
-        # Labels
+        
         self.counter_label = QLabel("Nodes Searched: 0", self)
         self.benchmark_label = QLabel("Number of Benchmark Runs:", self)
 
-        # Layout setup
+        
         layout = QVBoxLayout()
         layout.addWidget(self.view)
 
 
-        # Spacing controls
+        
         layout.addWidget(QLabel("Select Aisle Spacing:", self))
         layout.addWidget(self.spacing_dropdown)
 
-        # Warehouse layout controls
+        
         layout.addWidget(QLabel("Select Warehouse Layout:", self))
         layout.addWidget(self.layout_dropdown)
 
-        # Aisle and shelf controls
+        
         layout.addWidget(QLabel("Number of Aisles:", self))
         layout.addWidget(self.aisle_spinbox)
         layout.addWidget(QLabel("Max Shelves per Aisle:", self))
         layout.addWidget(self.shelf_spinbox)
 
-        # Algorithm selection
+        
         layout.addWidget(QLabel("Select Algorithm:", self))
         layout.addWidget(self.algorithm_dropdown)
         layout.addWidget(self.diagonal_checkbox)
         self.algorithm_dropdown.currentIndexChanged.connect(self.on_algorithm_changed)
-        # Node setting buttons
+        
         layout.addWidget(self.start_button)
         layout.addWidget(self.end_button)
         layout.addWidget(self.barrier_button)
         layout.addWidget(self.search_button)
         layout.addWidget(self.generate_button)
 
-        # Save/Load controls
+        
         layout.addWidget(self.save_button)
         layout.addWidget(QLabel("Load Scenario:", self))
         layout.addWidget(self.load_dropdown)
         layout.addWidget(self.clear_button)
         layout.addWidget(self.counter_label)
 
-        # Item selection
+        
         layout.addWidget(QLabel("Select Item as End Node:", self))
         layout.addWidget(self.item_dropdown)
 
-        # Zoom controls
+        
         zoom_layout = QHBoxLayout()
         zoom_layout.addWidget(self.zoom_in_button)
         zoom_layout.addWidget(self.zoom_out_button)
         layout.addLayout(zoom_layout)
 
-        # Show all paths button
+        
         layout.addWidget(self.show_all_paths_button)
 
-        # Benchmark controls in a group
+        
         benchmark_group = QVBoxLayout()
         benchmark_header = QHBoxLayout()
         benchmark_header.addWidget(self.benchmark_label)
@@ -622,15 +570,15 @@ class WarehouseVisualizer(QMainWindow):
 
         layout.addLayout(benchmark_group)
 
-        # Set up the main container
+        
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-        self.grid_size = 12  # Initial grid size
+        self.grid_size = 12  
         self.init_grid()
 
-        self.load_scenarios()  # Load existing scenarios into the dropdown
+        self.load_scenarios()  
 
         self.show()
 
@@ -646,7 +594,7 @@ class WarehouseVisualizer(QMainWindow):
         }
 
     def handle_diagonal_change(self, state):
-        """Handle changes to the diagonal movement checkbox."""
+        
         new_diagonal_state = bool(state)
         if new_diagonal_state != self.current_diagonal_state:
             print("Diagonal movement state changed.")
@@ -654,8 +602,8 @@ class WarehouseVisualizer(QMainWindow):
 
 
     def on_algorithm_changed(self, index):
-        """Handle algorithm selection change."""
-        # Reset grid while preserving start, end, and barriers
+        
+        
         self.reset_grid()
 
         selected_algorithm = self.algorithm_dropdown.currentText()
@@ -663,12 +611,12 @@ class WarehouseVisualizer(QMainWindow):
         if not selected_algorithm:
             return
 
-        # Clear any cached Johnson's graph if it exists
+        
         if hasattr(self, 'johnsons_graph'):
             delattr(self, 'johnsons_graph')
             print("Cleared cached Johnson's graph due to algorithm change.")
 
-        # Check for negative weights compatibility
+        
         has_negative = self.has_negative_weights()
         selected_algorithm = self.algorithm_dropdown.currentText()
 
@@ -682,19 +630,19 @@ class WarehouseVisualizer(QMainWindow):
                 f"Please choose one of these algorithms:\n{', '.join(compatible_algorithms)}"
             )
     def zoom_in(self):
-        """Zoom in the view by scaling up."""
-        self.view.scale(1.2, 1.2)  # Scale up by 20%
+        
+        self.view.scale(1.2, 1.2)  
 
     def zoom_out(self):
-        """Zoom out the view by scaling down."""
-        self.view.scale(1 / 1.2, 1 / 1.2)  # Scale down by 20%
+        
+        self.view.scale(1 / 1.2, 1 / 1.2)  
 
     def adjust_zoom(self):
-        """Adjust the zoom level to fit the entire grid within the view."""
-        # Reset any existing transformations
+        
+        
         self.view.resetTransform()
 
-        # Calculate the total size of the grid
+        
         total_width = self.grid_size * self.node_size
         total_height = self.grid_size * self.node_size
 
@@ -707,13 +655,13 @@ class WarehouseVisualizer(QMainWindow):
         scale_y = view_height / total_height
 
 
-        scale = min(scale_x, scale_y) * 0.9  # Use 90% to add some padding
+        scale = min(scale_x, scale_y) * 0.9  
 
         self.view.scale(scale, scale)
 
     def init_grid(self):
-        """Initialize an empty grid of nodes with a buffer around the warehouse."""
-        # Clear the existing scene and grid
+        
+        
         self.scene.clear()
         self.grid = []
 
@@ -727,7 +675,7 @@ class WarehouseVisualizer(QMainWindow):
             self.grid.append(row)
 
     def reset_grid(self):
-        """Reset the path and visited nodes but keep start, end, and barriers."""
+        
         for row in self.grid:
             for node in row:
                 if not node.is_start and not node.is_end and not node.is_obstacle:
@@ -735,7 +683,7 @@ class WarehouseVisualizer(QMainWindow):
         self.counter_label.setText("Nodes Searched: 0")
 
     def clear_all(self):
-        """Clear the entire grid, including start, end, and barriers."""
+        
         for row in self.grid:
             for node in row:
                 node.is_start = False
@@ -755,7 +703,7 @@ class WarehouseVisualizer(QMainWindow):
             print("Cleared last grid state during clear_all.")
 
     def update_spacing(self):
-        """Update the spacing between aisles based on dropdown selection."""
+        
         self.spacing = int(self.spacing_dropdown.currentText())
 
     def update_num_aisles(self, value):
@@ -773,16 +721,16 @@ class WarehouseVisualizer(QMainWindow):
         elif selected_layout == "Mixed Aisles":
             orientation = 'mixed'
         else:
-            orientation = 'vertical'  # Default to vertical
+            orientation = 'vertical'  
         self.generate_warehouse_layout(orientation)
 
     def generate_warehouse_layout(self, orientation='vertical', unique_filename=None):
-        """Generate the warehouse layout with adjustable aisle spacing and label items."""
+        
         try:
             self.is_generating_warehouse = True
             self.clear_all()
 
-            # *** Clear Cached Johnson's Graph ***
+            
             if hasattr(self, 'johnsons_graph'):
                 del self.johnsons_graph
                 print("Cleared cached Johnson's graph.")
@@ -790,7 +738,7 @@ class WarehouseVisualizer(QMainWindow):
                 del self.last_grid_state
                 print("Cleared last grid state.")
 
-            # Generate warehouse data
+            
             if unique_filename:
                 warehouse_data = generate_warehouse_data(
                     num_aisles=self.num_aisles,
@@ -810,7 +758,7 @@ class WarehouseVisualizer(QMainWindow):
             self.item_dropdown.clear()
             self.item_dropdown.addItem("Select Item")
 
-            self.item_nodes = []  # Re-initialize item_nodes list
+            self.item_nodes = []  
 
             aisles = warehouse_data['Aisle_Number'].nunique()
             aisle_positions = []
@@ -818,8 +766,8 @@ class WarehouseVisualizer(QMainWindow):
             vertical_positions = set()
             horizontal_positions = set()
 
-            # Determine max_x and max_y to prevent out-of-bounds access
-            max_x, max_y = 12, 12  # Default grid size
+            
+            max_x, max_y = 12, 12  
 
             if orientation == 'vertical':
                 for aisle_num in range(1, aisles + 1):
@@ -840,13 +788,13 @@ class WarehouseVisualizer(QMainWindow):
                 num_horizontal_aisles = aisles // 2
 
                 for i in range(num_vertical_aisles):
-                    x = 2 + i * (self.spacing + 2)  # Ensure 1-block space by adding 2
+                    x = 2 + i * (self.spacing + 2)  
                     vertical_positions.add(x)
                     aisle_positions.append(('vertical', x))
 
                 for i in range(num_horizontal_aisles):
                     y = 2 + i * (self.spacing + 2)
-                    # Adjust y to ensure it's offset from x positions
+                    
                     while y in vertical_positions or y + 1 in vertical_positions:
                         y += 1
                     horizontal_positions.add(y)
@@ -856,12 +804,12 @@ class WarehouseVisualizer(QMainWindow):
                 max_y = max(max(horizontal_positions, default=0), 2 + self.max_shelves_per_aisle) + 2
 
 
-            max_x = min(max_x, 50)  # Set an upper limit for the grid size
+            max_x = min(max_x, 50)  
             max_y = min(max_y, 50)
 
-            # Update grid size
+            
             self.grid_size = max(int(max_x), int(max_y)) + 2
-            self.init_grid()  # Reinitialize the grid with the new size
+            self.init_grid()  
 
             for i, row in warehouse_data.iterrows():
                 try:
@@ -870,7 +818,7 @@ class WarehouseVisualizer(QMainWindow):
                     shelf_loc = row['Shelf_Location']
                     item = row['Item'] if row['Item'] is not None else "Empty"
 
-                    # Skip if aisle number exceeds available positions
+                    
                     if aisle_num - 1 >= len(aisle_positions):
                         continue
 
@@ -878,29 +826,29 @@ class WarehouseVisualizer(QMainWindow):
 
                     if orientation_type == 'vertical':
                         x = pos
-                        y = 2 + (shelf_num - 1)  #
-                        aisle_color = QColor(150, 150, 250)  # Light blue
-                    else:  # Horizontal
+                        y = 2 + (shelf_num - 1)  
+                        aisle_color = QColor(150, 150, 250)  
+                    else:  
                         x = 2 + (shelf_num - 1)
                         y = pos
-                        aisle_color = QColor(150, 0, 250)  # Purple color for horizontal aisles
+                        aisle_color = QColor(150, 0, 250)  
 
-                    # Ensure coordinates are within grid bounds
+                    
                     if x >= self.grid_size or y >= self.grid_size:
                         print(f"Skipping node at ({x}, {y}) - out of bounds.")
-                        continue  # Skip if out of bounds
+                        continue  
 
                     node = self.grid[y][x]
-                    node.set_as_aisle(aisle_color)  # Pass the correct aisle color
-                    # Set the node's name to include aisle, shelf, and location
+                    node.set_as_aisle(aisle_color)  
+                    
                     node.name = f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"
 
-                    # Add the item to the dropdown if not empty
+                    
                     if item != "Empty":
                         self.item_dropdown.addItem(
                             f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})")
 
-                        # Store the item node for benchmarking
+                        
                         node_info = {
                             'node': node,
                             'item': item,
@@ -909,42 +857,42 @@ class WarehouseVisualizer(QMainWindow):
                         }
                         self.item_nodes.append(node_info)
 
-                        # Define the item number
+                        
                         item_number = item.split('_')[-1] if item != "Empty" else "Empty"
 
-                        # Set the item label using the Node class method
+                        
                         node.set_item_label(item_number)
                 except Exception as e:
                     print(f"Error processing row {i}: {e}")
 
-            # Re-enable signals now that dropdown is populated
+            
             self.item_dropdown.blockSignals(False)
 
-            # Adjust the zoom to fit the new layout
+            
             self.adjust_zoom()
             print(f"Item nodes available: {len(self.item_nodes)}")
 
         except Exception as e:
             print(f"Error in generate_warehouse_layout: {e}")
         finally:
-            # Reset the flag after generation is complete
+            
             self.is_generating_warehouse = False
 
     def set_mode_start(self):
-        """Set mode to start node selection."""
+        
         self.current_mode = 'start'
 
     def set_mode_end(self):
-        """Set mode to end node selection."""
+        
         self.current_mode = 'end'
 
     def set_mode_barrier(self):
-        """Set mode to barrier node selection."""
+        
         self.current_mode = 'barrier'
 
     def set_start_node(self, node):
-        """Set the selected node as the start node."""
-        # Prevent setting the same node as both start and end
+        
+        
         if node not in [n for row in self.grid for n in row]:
             QMessageBox.warning(self, "Invalid Node", "The selected start node is no longer valid.")
             return
@@ -954,61 +902,61 @@ class WarehouseVisualizer(QMainWindow):
         if self.end_node == node:
             return
 
-        # Reset the previous start node if it exists
+        
         if self.start_node:
             self.start_node.is_start = False
             self.start_node.reset()
 
-        # Set the new start node
+        
         self.start_node = node
         self.start_node.set_as_start()
 
     def set_end_node(self, node):
-        """Set the selected node as the end node."""
-        # Prevent setting the same node as both start and end
+        
+        
         if not hasattr(self, 'end_node'):
             self.end_node = None
         if self.start_node == node:
             return
 
-        # Reset the previous end node if it exists
+        
         if self.end_node:
             self.end_node.is_end = False
             self.end_node.reset()
 
-        # Set the new end node
+        
         self.end_node = node
         self.end_node.set_as_end()
 
     def set_as_start(self):
-        """Mark the node as the start (green)."""
+        
         if self.parent_window.end_node == self:
-            return  # Prevent the same node from being both start and end
+            return  
         if self.parent_window.start_node:
             self.parent_window.start_node.is_start = False
             self.parent_window.start_node.reset()
         self.is_start = True
         self.is_obstacle = False
-        self.setBrush(QBrush(QColor(0, 255, 0)))  # Green for start
+        self.setBrush(QBrush(QColor(0, 255, 0)))  
         self.parent_window.start_node = self
 
     def set_as_end(self):
-        """Mark the node as the end (red)."""
+        
         if self.parent_window.start_node == self:
-            return  # Prevent the same node from being both start and end
+            return  
         if self.parent_window.end_node:
             self.parent_window.end_node.is_end = False
             self.parent_window.end_node.reset()
         self.is_end = True
         self.is_obstacle = False
-        self.setBrush(QBrush(QColor(255, 0, 0)))  # Red for end
+        self.setBrush(QBrush(QColor(255, 0, 0)))  
         self.parent_window.end_node = self
 
     def set_end_node_from_dropdown(self):
-        """Set the end node based on the item selected from the dropdown."""
+        
         selected_item = self.item_dropdown.currentText()
 
-        # Debug info about the dropdown state
+        
         print("\nDropdown Debug Info:")
         print(f"Current dropdown text: '{selected_item}'")
         print(f"Dropdown item count: {self.item_dropdown.count()}")
@@ -1027,13 +975,13 @@ class WarehouseVisualizer(QMainWindow):
         try:
             print(f"\nParsing Process for: '{selected_item}'")
 
-            # Check for delimiter
+            
             if " (Aisle " not in selected_item:
                 print(f"Error: Missing expected delimiter ' (Aisle ' in string: '{selected_item}'")
                 print("Expected format: 'Item_XXXX (Aisle N, Shelf M, Location L)'")
                 return
 
-            # Split into item name and location info
+            
             try:
                 item_part, location_part = selected_item.split(" (Aisle ", 1)
                 print(f"Split result:")
@@ -1044,12 +992,12 @@ class WarehouseVisualizer(QMainWindow):
                 print(f"Full string being split: '{selected_item}'")
                 return
 
-            # Remove trailing parenthesis and split location info
+            
             location_part = location_part.rstrip(')')
             print(f"Location part after removing parenthesis: '{location_part}'")
 
             try:
-                # Split location part into components
+                
                 aisle_shelf_loc = location_part.split(", ")
                 print(f"Location components after split: {aisle_shelf_loc}")
 
@@ -1058,7 +1006,7 @@ class WarehouseVisualizer(QMainWindow):
                     print(f"Components: {aisle_shelf_loc}")
                     return
 
-                # Parse aisle number
+                
                 try:
                     aisle_num = int(aisle_shelf_loc[0])
                     print(f"Parsed aisle number: {aisle_num}")
@@ -1066,7 +1014,7 @@ class WarehouseVisualizer(QMainWindow):
                     print(f"Error: Could not convert aisle number '{aisle_shelf_loc[0]}' to integer")
                     return
 
-                # Parse shelf number
+                
                 shelf_part = aisle_shelf_loc[1].split(" ")
                 print(f"Shelf part split: {shelf_part}")
 
@@ -1082,7 +1030,7 @@ class WarehouseVisualizer(QMainWindow):
                     print(f"Error: Could not convert shelf number '{shelf_part[1]}' to integer")
                     return
 
-                # Parse location
+                
                 loc_part = aisle_shelf_loc[2].split(" ")
                 print(f"Location part split: {loc_part}")
 
@@ -1099,14 +1047,14 @@ class WarehouseVisualizer(QMainWindow):
                 print(f"Location part being parsed: '{location_part}'")
                 return
 
-            # Print orientation information
+            
             orientation = self.layout_dropdown.currentText()
             print(f"\nLayout Configuration:")
             print(f"Selected orientation: '{orientation}'")
             print(f"Number of aisles: {self.num_aisles}")
             print(f"Spacing: {self.spacing}")
 
-            # Rest of the method remains the same...
+            
             if orientation == "Vertical Aisles":
                 orientation_type = 'vertical'
             elif orientation == "Horizontal Aisles":
@@ -1114,12 +1062,12 @@ class WarehouseVisualizer(QMainWindow):
             elif orientation == "Mixed Aisles":
                 orientation_type = 'mixed'
             else:
-                orientation_type = 'vertical'  # Default to vertical
+                orientation_type = 'vertical'  
                 print(f"Warning: Unknown orientation '{orientation}', defaulting to vertical")
 
             print(f"Using orientation type: {orientation_type}")
 
-            # Reconstruct aisle positions
+            
             aisle_positions = []
             vertical_positions = set()
             horizontal_positions = set()
@@ -1153,12 +1101,12 @@ class WarehouseVisualizer(QMainWindow):
             print(f"\nCalculated Positions:")
             print(f"Aisle positions: {aisle_positions}")
 
-            # Check if aisle number is valid
+            
             if aisle_num - 1 >= len(aisle_positions):
                 print(f"Error: Aisle number {aisle_num} exceeds available positions ({len(aisle_positions)})")
                 return
 
-            # Get position based on orientation
+            
             orientation_type_aisle, pos = aisle_positions[aisle_num - 1]
             print(f"Using position data: type={orientation_type_aisle}, pos={pos}")
 
@@ -1171,12 +1119,12 @@ class WarehouseVisualizer(QMainWindow):
 
             print(f"Calculated coordinates: x={x}, y={y}")
 
-            # Ensure coordinates are within grid bounds
+            
             if x >= self.grid_size or y >= self.grid_size:
                 print(f"Error: Calculated position ({x}, {y}) is out of bounds. Grid size is {self.grid_size}")
                 return
 
-            # Find the node and set it as end node
+            
             node = self.grid[y][x]
             if node:
                 print(f"Found node at ({x}, {y}). Setting as end node.")
@@ -1193,7 +1141,7 @@ class WarehouseVisualizer(QMainWindow):
             print("Full traceback:")
             traceback.print_exc()
     def has_negative_weights(self):
-        """Check if any edge weights in the grid are negative."""
+        
         for row in self.grid:
             for node in row:
                 if node.edge_weight < 0:
@@ -1201,19 +1149,19 @@ class WarehouseVisualizer(QMainWindow):
         return False
 
     def handle_search(self):
-        """Handle search between start and end nodes with proper algorithm selection and visualization."""
-        # Check for negative weights and algorithm compatibility
+        
+        
         has_negative = self.has_negative_weights()
         selected_algorithm = self.algorithm_dropdown.currentText()
 
-        # Update weights state for Johnson's caching
+        
         current_weights_state = {
             (x, y): self.grid[y][x].edge_weight
             for x in range(self.grid_size)
             for y in range(self.grid_size)
         }
 
-        # Clear Johnson's cache if weights have changed
+        
         if hasattr(self, 'last_weights_state') and self.last_weights_state != current_weights_state:
             if hasattr(self, 'johnsons_graph'):
                 delattr(self, 'johnsons_graph')
@@ -1221,7 +1169,7 @@ class WarehouseVisualizer(QMainWindow):
 
         self.last_weights_state = current_weights_state
 
-        # Verify algorithm compatibility with negative weights
+        
         if has_negative and not self.algorithm_capabilities[selected_algorithm]["handles_negative"]:
             compatible_algorithms = [
                 name for name, caps in self.algorithm_capabilities.items()
@@ -1235,7 +1183,7 @@ class WarehouseVisualizer(QMainWindow):
             )
             return
 
-        # Verify start and end nodes are set
+        
         if not hasattr(self, 'start_node') or self.start_node is None:
             self.counter_label.setText("Start node not set.")
             return
@@ -1243,10 +1191,10 @@ class WarehouseVisualizer(QMainWindow):
             self.counter_label.setText("End node not set.")
             return
 
-        # Clear previous path and visited nodes
+        
         self.reset_grid()
 
-        # Get start and end coordinates
+        
         start = (
             int(self.start_node.pos().x() // self.node_size),
             int(self.start_node.pos().y() // self.node_size)
@@ -1256,10 +1204,10 @@ class WarehouseVisualizer(QMainWindow):
             int(self.end_node.pos().y() // self.node_size)
         )
 
-        # Get diagonal movement setting
+        
         diagonal_neighbors = self.diagonal_checkbox.isChecked()
 
-        # Run the selected algorithm
+        
         try:
             if selected_algorithm == "Dijkstra's":
                 path, self.nodes_searched = self.run_dijkstra(
@@ -1292,34 +1240,34 @@ class WarehouseVisualizer(QMainWindow):
                 path, (mandatory_visits, pathfinding_visits) = self.run_johnsons(
                     start, end, diagonal_neighbors, visualize=True
                 )
-                # For visualization purposes, use the sum of both types of visits
+                
                 self.nodes_searched = mandatory_visits + pathfinding_visits
-                # Show both counts in the counter label
+                
                 self.counter_label.setText(
                     f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}"
                 )
-                return  # Return early as counter is already set
+                return  
             elif selected_algorithm == "Johnson's with A*":
                 path, (mandatory_visits, pathfinding_visits) = self.run_johnsons_astar(
                     start, end, diagonal_neighbors, visualize=True
                 )
-                # For visualization purposes, use the sum of both types of visits
+                
                 self.nodes_searched = mandatory_visits + pathfinding_visits
-                # Show both counts in the counter label
+                
                 self.counter_label.setText(
                     f"Mandatory: {mandatory_visits}, Pathfinding: {pathfinding_visits}"
                 )
-                return  # Return early as counter is already set
+                return  
             else:
                 self.counter_label.setText("Invalid algorithm selection.")
                 return
 
-            # If a path is found, visualize it step by step
+            
             if path:
                 self.search_path = path
                 self.visualize_path_step_by_step()
 
-                # Update counter label with path information
+                
                 total_path_length = len(path)
                 self.counter_label.setText(
                     f"Nodes Searched: {self.nodes_searched}, Path Length: {total_path_length}"
@@ -1337,16 +1285,7 @@ class WarehouseVisualizer(QMainWindow):
             )
 
     def calculate_path_length(self, path, diagonal_neighbors=False):
-        """
-        Calculate the true path length considering diagonal and orthogonal movements.
-
-        Parameters:
-            path: List of (x, y) coordinates representing the path
-            diagonal_neighbors: Boolean indicating if diagonal movement is allowed
-
-        Returns:
-            float: The actual path length
-        """
+        
         if not path or len(path) < 2:
             return 0
 
@@ -1355,22 +1294,22 @@ class WarehouseVisualizer(QMainWindow):
             current = path[i]
             next_point = path[i + 1]
 
-            # Calculate the movement type and distance
+            
             dx = abs(next_point[0] - current[0])
             dy = abs(next_point[1] - current[1])
 
-            # Get the nodes involved
+            
             current_node = self.grid[current[1]][current[0]]
             next_node = self.grid[next_point[1]][next_point[0]]
 
-            # Calculate average weight between current and next node
+            
             avg_weight = (current_node.edge_weight + next_node.edge_weight) / 2
 
             if diagonal_neighbors and dx == 1 and dy == 1:
-                # Diagonal movement (√2 ≈ 1.414)
+                
                 step_length = sqrt(2) * avg_weight
             else:
-                # Orthogonal movement
+                
                 step_length = (dx + dy) * avg_weight
 
             total_length += step_length
@@ -1378,42 +1317,39 @@ class WarehouseVisualizer(QMainWindow):
         return total_length
 
     def get_neighbors_for_reweighting(self, node, diagonal_neighbors=False):
-        """
-        Helper function to get neighbors for Johnson's algorithms with proper weight calculations.
-        Must match get_neighbors exactly for consistent path lengths.
-        """
+        
         (x, y) = node
 
-        # Define orthogonal and diagonal neighbors with exact same costs as get_neighbors
+        
         four_neighbors = [
-            ((-1, 0), 1.0),  # Left
-            ((1, 0), 1.0),  # Right
-            ((0, -1), 1.0),  # Up
-            ((0, 1), 1.0)  # Down
+            ((-1, 0), 1.0),  
+            ((1, 0), 1.0),  
+            ((0, -1), 1.0),  
+            ((0, 1), 1.0)  
         ]
 
         eight_neighbors = [
-            ((-1, -1), sqrt(2)),  # Up-Left
-            ((1, -1), sqrt(2)),  # Up-Right
-            ((-1, 1), sqrt(2)),  # Down-Left
-            ((1, 1), sqrt(2))  # Down-Right
+            ((-1, -1), sqrt(2)),  
+            ((1, -1), sqrt(2)),  
+            ((-1, 1), sqrt(2)),  
+            ((1, 1), sqrt(2))  
         ]
 
         neighbors = []
 
-        # First add orthogonal neighbors (no need for extra checks)
+        
         for (dx, dy), base_cost in four_neighbors:
             nx, ny = x + dx, y + dy
             if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
                 neighbor_node = self.grid[ny][nx]
                 if not neighbor_node.is_obstacle:
                     current_node = self.grid[y][x]
-                    # Use exact same weight calculation as get_neighbors
+                    
                     avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
                     total_cost = base_cost * avg_weight
                     neighbors.append(((nx, ny), total_cost))
 
-        # Add diagonal neighbors using exact same logic as get_neighbors
+        
         if diagonal_neighbors:
             def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
                 dx = new_x - curr_x
@@ -1430,7 +1366,7 @@ class WarehouseVisualizer(QMainWindow):
                     neighbor_node = self.grid[ny][nx]
                     if not neighbor_node.is_obstacle and is_diagonal_valid(x, y, nx, ny):
                         current_node = self.grid[y][x]
-                        # Use exact same weight calculation as get_neighbors
+                        
                         avg_weight = (current_node.edge_weight + neighbor_node.edge_weight) / 2
                         total_cost = base_cost * avg_weight
                         neighbors.append(((nx, ny), total_cost))
@@ -1438,25 +1374,22 @@ class WarehouseVisualizer(QMainWindow):
         return neighbors
 
     def run_johnsons(self, start, end, diagonal_neighbors=False, visualize=True):
-        """
-        Complete implementation of Johnson's algorithm with proper path length calculation.
-        Uses original weights for pathfinding after reweighting for negative cycle detection.
-        """
+        
         mandatory_visits = 0
         pathfinding_visits = 0
 
-        # Include ALL valid nodes including aisles, just excluding actual obstacles
+        
         current_nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)
                          if not self.grid[y][x].is_obstacle]
 
-        # Validate start and end are not obstacles
+        
         if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
             if visualize:
                 self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Invalid start or end position")
             return None, (mandatory_visits, pathfinding_visits)
 
-        # PHASE 1: Graph Preprocessing (only if needed)
+        
         if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
             try:
                 if visualize:
@@ -1464,16 +1397,16 @@ class WarehouseVisualizer(QMainWindow):
                     self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
                     QApplication.processEvents()
 
-                # Save current grid state
+                
                 self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
                                         for x in range(self.grid_size)
                                         for y in range(self.grid_size)}
 
-                # Step 1: Create graph with virtual node for negative cycle detection
+                
                 virtual_node = (-1, -1)
                 modified_graph = {virtual_node: []}
 
-                # Initialize all nodes (including aisles)
+                
                 for node in current_nodes:
                     modified_graph[node] = []
                     mandatory_visits += 1
@@ -1482,18 +1415,18 @@ class WarehouseVisualizer(QMainWindow):
                         self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
                         QApplication.processEvents()
 
-                # Add edges, considering aisle nodes
+                
                 for node in current_nodes:
                     modified_graph[virtual_node].append((node, 0))
                     for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
                         if neighbor in current_nodes:
                             modified_graph[node].append((neighbor, weight))
 
-                # Step 2: Run modified Bellman-Ford for reweighting
+                
                 h_values = {node: float('inf') for node in current_nodes}
                 h_values[virtual_node] = 0
 
-                # First pass: |V|-1 iterations of relaxation
+                
                 for i in range(len(current_nodes)):
                     updates = False
                     for u in modified_graph:
@@ -1510,7 +1443,7 @@ class WarehouseVisualizer(QMainWindow):
                     if not updates:
                         break
 
-                # Second pass: Check for negative cycles
+                
                 for u in modified_graph:
                     for v, weight in modified_graph[u]:
                         if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
@@ -1520,8 +1453,8 @@ class WarehouseVisualizer(QMainWindow):
                                 QApplication.processEvents()
                             return None, (mandatory_visits, pathfinding_visits)
 
-                # Store the reweighted graph for future use
-                self.johnsons_graph = True  # Just mark that preprocessing is done
+                
+                self.johnsons_graph = True  
 
             except Exception as e:
                 if visualize:
@@ -1530,14 +1463,14 @@ class WarehouseVisualizer(QMainWindow):
                     QApplication.processEvents()
                 return None, (mandatory_visits, pathfinding_visits)
 
-        # Reset visualization before pathfinding
+        
         if visualize:
             for y in range(self.grid_size):
                 for x in range(self.grid_size):
                     if (x, y) != start and (x, y) != end:
                         self.grid[y][x].reset()
 
-        # PHASE 2: Pathfinding using original weights
+        
         distances = {(x, y): float('inf')
                      for x in range(self.grid_size)
                      for y in range(self.grid_size)}
@@ -1565,13 +1498,13 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
                 QApplication.processEvents()
 
-            # Use get_neighbors for consistent weight calculations
+            
             for neighbor, weight in self.get_neighbors(current, diagonal_neighbors):
                 if neighbor not in visited:
                     can_traverse = (
-                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
-                            or neighbor == end  # End node (can be aisle)
-                            or current == start  # Moving from start (can go to aisle)
+                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  
+                            or neighbor == end  
+                            or current == start  
                     )
 
                     if can_traverse:
@@ -1581,7 +1514,7 @@ class WarehouseVisualizer(QMainWindow):
                             predecessors[neighbor] = current
                             heapq.heappush(pq, (distance, neighbor))
 
-        # Reconstruct path
+        
         if distances[end] != float('inf'):
             path = []
             current = end
@@ -1604,25 +1537,22 @@ class WarehouseVisualizer(QMainWindow):
         return None, (mandatory_visits, pathfinding_visits)
 
     def run_johnsons_astar(self, start, end, diagonal_neighbors=False, visualize=True):
-        """
-        Johnson's algorithm implementation with A* pathfinding after reweighting.
-        Uses original weights for pathfinding after reweighting for negative cycle detection.
-        """
+        
         mandatory_visits = 0
         pathfinding_visits = 0
 
-        # Include ALL valid nodes including aisles, just excluding actual obstacles
+        
         current_nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)
                          if not self.grid[y][x].is_obstacle]
 
-        # Validate start and end are not obstacles
+        
         if self.grid[start[1]][start[0]].is_obstacle or self.grid[end[1]][end[0]].is_obstacle:
             if visualize:
                 self.counter_label.setStyleSheet("color: red;")
                 self.counter_label.setText("Invalid start or end position")
             return None, (mandatory_visits, pathfinding_visits)
 
-        # PHASE 1: Graph Preprocessing (only if needed)
+        
         if not hasattr(self, 'johnsons_graph') or not hasattr(self, 'last_grid_state'):
             try:
                 if visualize:
@@ -1630,16 +1560,16 @@ class WarehouseVisualizer(QMainWindow):
                     self.counter_label.setText("Creating reweighted graph using Bellman-Ford")
                     QApplication.processEvents()
 
-                # Save current grid state
+                
                 self.last_grid_state = {(x, y): self.grid[y][x].is_obstacle
                                         for x in range(self.grid_size)
                                         for y in range(self.grid_size)}
 
-                # Step 1: Create graph with virtual node for negative cycle detection
+                
                 virtual_node = (-1, -1)
                 modified_graph = {virtual_node: []}
 
-                # Initialize all nodes (including aisles)
+                
                 for node in current_nodes:
                     modified_graph[node] = []
                     mandatory_visits += 1
@@ -1648,18 +1578,18 @@ class WarehouseVisualizer(QMainWindow):
                         self.counter_label.setText(f"Building graph: {mandatory_visits} nodes processed")
                         QApplication.processEvents()
 
-                # Add edges, considering aisle nodes
+                
                 for node in current_nodes:
                     modified_graph[virtual_node].append((node, 0))
                     for neighbor, weight in self.get_neighbors_for_reweighting(node, diagonal_neighbors):
                         if neighbor in current_nodes:
                             modified_graph[node].append((neighbor, weight))
 
-                # Step 2: Run modified Bellman-Ford for reweighting
+                
                 h_values = {node: float('inf') for node in current_nodes}
                 h_values[virtual_node] = 0
 
-                # First pass: |V|-1 iterations of relaxation
+                
                 for i in range(len(current_nodes)):
                     updates = False
                     for u in modified_graph:
@@ -1676,7 +1606,7 @@ class WarehouseVisualizer(QMainWindow):
                     if not updates:
                         break
 
-                # Check for negative cycles
+                
                 for u in modified_graph:
                     for v, weight in modified_graph[u]:
                         if h_values[u] != float('inf') and h_values[u] + weight < h_values[v]:
@@ -1686,7 +1616,7 @@ class WarehouseVisualizer(QMainWindow):
                                 QApplication.processEvents()
                             return None, (mandatory_visits, pathfinding_visits)
 
-                # Store that preprocessing is done
+                
                 self.johnsons_graph = True
 
             except Exception as e:
@@ -1696,14 +1626,14 @@ class WarehouseVisualizer(QMainWindow):
                     QApplication.processEvents()
                 return None, (mandatory_visits, pathfinding_visits)
 
-        # Reset visualization before pathfinding
+        
         if visualize:
             for y in range(self.grid_size):
                 for x in range(self.grid_size):
                     if (x, y) != start and (x, y) != end:
                         self.grid[y][x].reset()
 
-        # PHASE 2: A* Pathfinding using original weights
+        
         g_score = {(x, y): float('inf')
                    for x in range(self.grid_size)
                    for y in range(self.grid_size)}
@@ -1736,13 +1666,13 @@ class WarehouseVisualizer(QMainWindow):
                 self.counter_label.setText(f"Pathfinding visits: {pathfinding_visits}")
                 QApplication.processEvents()
 
-            # Use get_neighbors for consistent weight calculations
+            
             for neighbor, weight in self.get_neighbors(current, diagonal_neighbors):
                 if neighbor not in visited:
                     can_traverse = (
-                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  # Regular non-aisle node
-                            or neighbor == end  # End node (can be aisle)
-                            or current == start  # Moving from start (can go to aisle)
+                            not self.grid[neighbor[1]][neighbor[0]].is_aisle  
+                            or neighbor == end  
+                            or current == start  
                     )
 
                     if can_traverse:
@@ -1753,7 +1683,7 @@ class WarehouseVisualizer(QMainWindow):
                             f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, end, "Manhattan Distance")
                             heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-        # Reconstruct path
+        
         if g_score[end] != float('inf'):
             path = []
             current = end
@@ -1775,27 +1705,27 @@ class WarehouseVisualizer(QMainWindow):
             self.counter_label.setText("No path found")
         return None, (mandatory_visits, pathfinding_visits)
     def bellman_ford_for_johnsons(self, graph, source):
-        """Helper function for Johnson's algorithm to compute h values."""
+        
         distances = {node: float('inf') for node in graph}
         distances[source] = 0
 
-        # Relax all edges |V|-1 times
+        
         for _ in range(len(graph) - 1):
             for u in graph:
                 for v, weight in graph[u]:
                     if distances[u] + weight < distances[v]:
                         distances[v] = distances[u] + weight
 
-        # Check for negative cycles
+        
         for u in graph:
             for v, weight in graph[u]:
                 if distances[u] + weight < distances[v]:
-                    return None  # Negative cycle detected
+                    return None  
 
         return distances
 
     def dijkstra_for_johnsons(self, graph, source):
-        """Modified Dijkstra's algorithm for Johnson's algorithm."""
+        
         distances = {node: float('inf') for node in graph}
         distances[source] = 0
         predecessors = {node: None for node in graph}
@@ -1820,13 +1750,13 @@ class WarehouseVisualizer(QMainWindow):
         return distances, predecessors
 
     def run_astar(self, start, end, diagonal_neighbors=False, visualize=True, heuristic_type="Manhattan Distance"):
-        """Run the A* algorithm with consistent path length calculation."""
+        
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
         g_score = {start: 0}
 
-        # Calculate initial heuristic
+        
         h = self.heuristic(start, end, heuristic_type)
         f_score = {start: h}
         self.nodes_searched = 0
@@ -1857,7 +1787,7 @@ class WarehouseVisualizer(QMainWindow):
         return None, self.nodes_searched
 
     def run_spfa(self, start, end, diagonal_neighbors=False, visualize=True):
-        """Run SPFA algorithm with consistent path length calculation."""
+        
         distance = {(x, y): float('inf') for x in range(self.grid_size) for y in range(self.grid_size)}
         predecessor = {(x, y): None for x in range(self.grid_size) for y in range(self.grid_size)}
         in_queue = {(x, y): False for x in range(self.grid_size) for y in range(self.grid_size)}
@@ -1890,7 +1820,7 @@ class WarehouseVisualizer(QMainWindow):
             if current == end:
                 break
 
-        # Reconstruct path
+        
         if distance[end] == float('inf'):
             return None, self.nodes_searched
 
@@ -1903,16 +1833,16 @@ class WarehouseVisualizer(QMainWindow):
 
         return path, self.nodes_searched
     def run_bellman_ford(self, start, end, diagonal_neighbors=False, visualize=True):
-        """Run Bellman-Ford algorithm with consistent path length calculation."""
+        
         nodes = [(x, y) for y in range(self.grid_size) for x in range(self.grid_size)]
         edges = []
 
-        # Initialize distances and predecessors
+        
         distance = {node: float('inf') for node in nodes}
         distance[start] = 0
         predecessor = {node: None for node in nodes}
 
-        # Build edges list with proper weights
+        
         for y in range(self.grid_size):
             for x in range(self.grid_size):
                 current_node = (x, y)
@@ -1922,7 +1852,7 @@ class WarehouseVisualizer(QMainWindow):
         self.nodes_searched = 0
         visited_nodes = set()
 
-        # Main Bellman-Ford algorithm
+        
         for _ in range(len(nodes) - 1):
             for u, v, weight in edges:
                 if distance[u] + weight < distance[v]:
@@ -1938,13 +1868,13 @@ class WarehouseVisualizer(QMainWindow):
                         self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}")
                         QApplication.processEvents()
 
-        # Check for negative cycles
+        
         for u, v, weight in edges:
             if distance[u] + weight < distance[v]:
                 print("Graph contains a negative-weight cycle")
                 return None, self.nodes_searched
 
-        # Reconstruct path
+        
         if distance[end] == float('inf'):
             return None, self.nodes_searched
 
@@ -1957,7 +1887,7 @@ class WarehouseVisualizer(QMainWindow):
 
         return path if path[0] == start else None, self.nodes_searched
     def run_dijkstra(self, start, end, diagonal_neighbors=False, visualize=True):
-        """Run Dijkstra's algorithm with consistent path length calculation."""
+        
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
@@ -1988,38 +1918,38 @@ class WarehouseVisualizer(QMainWindow):
 
         return None, self.nodes_searched
     def is_valid_position(self, x, y):
-        """Check if position is within grid bounds."""
+        
         return 0 <= x < self.grid_size and 0 <= y < self.grid_size
 
     def is_obstacle_func(self, x, y):
-        """Check if the node is an obstacle, and ensure aisles are non-traversable except the end node."""
+        
         if not self.is_valid_position(x, y):
             return True
-        # If it's an aisle and not the end node, treat it as an obstacle
+        
         if self.grid[y][x].is_aisle and self.grid[y][x] != self.end_node:
             return True
         return self.grid[y][x].is_obstacle
 
     def is_traversable(self, x, y):
-        """Check if the node is traversable (not an obstacle or it's the start/end node)."""
+        
         if not self.is_valid_position(x, y):
             return False
         node = self.grid[y][x]
 
-        # Allow aisles to be traversable only if they are the end node
+        
         if node.is_aisle and node != self.end_node:
             return False
 
         return not node.is_obstacle
 
     def distance(self, node_a, node_b):
-        """Calculate distance between two nodes."""
+        
         (x1, y1) = node_a
         (x2, y2) = node_b
         return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
     def heuristic(self, node, goal, heuristic_type="Manhattan"):
-        """Heuristic function that supports different types of heuristics."""
+        
         (x1, y1) = node
         (x2, y2) = goal
 
@@ -2030,31 +1960,31 @@ class WarehouseVisualizer(QMainWindow):
         elif heuristic_type == "Modified Euclidean":
             return sqrt((x1 - x2) ** 2 + (1.2 * (y1 - y2)) ** 2)
         else:
-            # Default fallback to Manhattan distance
+            
             return abs(x1 - x2) + abs(y1 - y2)
 
     def get_neighbors(self, node, diagonal_neighbors=False):
-        """Get valid neighboring nodes with consistent weight calculations."""
+        
         (x, y) = node
 
-        # Define orthogonal and diagonal neighbors with their respective costs
+        
         four_neighbors = [
-            ((-1, 0), 1.0),  # Left
-            ((1, 0), 1.0),  # Right
-            ((0, -1), 1.0),  # Up
-            ((0, 1), 1.0)  # Down
+            ((-1, 0), 1.0),  
+            ((1, 0), 1.0),  
+            ((0, -1), 1.0),  
+            ((0, 1), 1.0)  
         ]
 
         eight_neighbors = [
-            ((-1, -1), sqrt(2)),  # Up-Left
-            ((1, -1), sqrt(2)),  # Up-Right
-            ((-1, 1), sqrt(2)),  # Down-Left
-            ((1, 1), sqrt(2))  # Down-Right
+            ((-1, -1), sqrt(2)),  
+            ((1, -1), sqrt(2)),  
+            ((-1, 1), sqrt(2)),  
+            ((1, 1), sqrt(2))  
         ]
 
         neighbors = []
 
-        # Add orthogonal neighbors
+        
         for (dx, dy), base_cost in four_neighbors:
             nx, ny = x + dx, y + dy
             if self.is_valid_position(nx, ny) and self.is_traversable(nx, ny):
@@ -2065,7 +1995,7 @@ class WarehouseVisualizer(QMainWindow):
                 total_cost = base_cost * avg_weight
                 neighbors.append((neighbor_coords, total_cost))
 
-        # Add diagonal neighbors if enabled
+        
         if diagonal_neighbors:
             def is_diagonal_valid(curr_x, curr_y, new_x, new_y):
                 dx = new_x - curr_x
@@ -2087,7 +2017,7 @@ class WarehouseVisualizer(QMainWindow):
         return neighbors
 
     def reconstruct_path(self, came_from, current):
-        """Reconstructs the path and calculates its true length."""
+        
         path = []
         while current in came_from:
             path.append(current)
@@ -2097,7 +2027,7 @@ class WarehouseVisualizer(QMainWindow):
         return path
 
     def visualize_next_path(self):
-        # First, check if all target nodes have been processed
+        
         if self.current_target_index >= len(self.all_target_nodes_copy):
             self.all_paths_timer.stop()
             QMessageBox.information(self, "Show All Paths", "Completed visualizing all paths.")
@@ -2105,37 +2035,37 @@ class WarehouseVisualizer(QMainWindow):
             print("Completed visualizing all paths")
             return
 
-        # Now, proceed with visualization
+        
         node = self.all_target_nodes_copy[self.current_target_index]
         print(f"Visualizing path {self.current_target_index + 1} of {len(self.all_target_nodes_copy)}")
         print(f"Visualizing path to node: {node.name}")
 
-        # Set end node to this node
+        
         self.end_node = node
 
-        # Reset grid before each run
+        
         self.reset_grid()
         print("Grid reset before visualizing the current path")
 
-        # Get start and end coordinates
+        
         start = (int(self.start_node.pos().x() // self.node_size),
                  int(self.start_node.pos().y() // self.node_size))
         end = (int(self.end_node.pos().x() // self.node_size),
                int(self.end_node.pos().y() // self.node_size))
         print(f"Start coordinates: {start}, End coordinates: {end}")
 
-        # Determine which algorithm to run based on dropdown selection
+        
         selected_algorithm = self.algorithm_dropdown.currentText()
         print(f"Running algorithm: {selected_algorithm}")
 
         try:
-            # Run the selected algorithm without visualization
+            
             if selected_algorithm == "Dijkstra's":
                 path, _ = self.run_dijkstra(start, end, diagonal_neighbors=False, visualize=False)
             elif selected_algorithm == "Bellman-Ford":
                 path, _ = self.run_bellman_ford(start, end, diagonal_neighbors=False, visualize=False)
             elif selected_algorithm.startswith("A*"):
-                # Determine heuristic type based on selection
+                
                 if selected_algorithm == "A* (Manhattan Distance)":
                     heuristic_type = "Manhattan"
                 elif selected_algorithm == "A* (Euclidean Distance)":
@@ -2143,7 +2073,7 @@ class WarehouseVisualizer(QMainWindow):
                 elif selected_algorithm == "A* (Modified Euclidean 1.2x Y Priority)":
                     heuristic_type = "Modified Euclidean"
                 else:
-                    heuristic_type = "Manhattan"  # Default heuristic
+                    heuristic_type = "Manhattan"  
 
                 path, _ = self.run_astar(start, end, diagonal_neighbors=False, visualize=False,
                                          heuristic_type=heuristic_type)
@@ -2156,7 +2086,7 @@ class WarehouseVisualizer(QMainWindow):
             else:
                 path = None
 
-            # Visualize the path if found
+            
             if path:
                 for node_coords in path:
                     if node_coords != start and node_coords != end:
@@ -2165,10 +2095,10 @@ class WarehouseVisualizer(QMainWindow):
             else:
                 print(f"No path found to {node.name}.")
 
-            # Update the counter label
+            
             self.counter_label.setText(
                 f"Visualized paths: {self.current_target_index + 1}/{len(self.all_target_nodes_copy)}")
-            QApplication.processEvents()  # Update the UI in real-time
+            QApplication.processEvents()  
 
         except Exception as e:
             print(f"Exception during path visualization: {e}")
@@ -2177,30 +2107,30 @@ class WarehouseVisualizer(QMainWindow):
             self.set_ui_enabled(True)
             return
 
-        # Move to the next target node
+        
         self.current_target_index += 1
 
     def visualize_path_step_by_step(self):
-        """Visualize the path traversal with a delay."""
+        
         self.step_index = 0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_step)
-        self.timer.start(10)  # 200 ms delay
+        self.timer.start(10)  
 
-        # Display the total path length in addition to nodes searched
+        
         total_path_length = len(self.search_path)
 
-        # Check if we're using Johnson's algorithm
+        
         if self.algorithm_dropdown.currentText() == "Johnson's":
-            # Keep the existing counter label text which shows both mandatory and pathfinding visits
+            
             current_text = self.counter_label.text()
             self.counter_label.setText(f"{current_text}, Path Length: {total_path_length}")
         else:
-            # Standard display for other algorithms
+            
             self.counter_label.setText(f"Nodes Searched: {self.nodes_searched}, Path Length: {total_path_length}")
 
     def update_step(self):
-        """Update the grid one step at a time."""
+        
         if self.step_index < len(self.search_path):
             x, y = self.search_path[self.step_index]
             node = self.grid[y][x]
@@ -2208,14 +2138,14 @@ class WarehouseVisualizer(QMainWindow):
                 node.set_path()
             self.step_index += 1
         else:
-            self.timer.stop()  # Stop once the entire path is visualized
+            self.timer.stop()  
 
     def save_scenario(self):
-        """Save the current warehouse layout, state, and warehouse data as a scenario."""
-        # Prompt the user to enter a scenario name
+        
+        
         scenario_name, ok = QInputDialog.getText(self, "Save Scenario", "Enter scenario name:")
         if ok and scenario_name:
-            # Prepare the scenario data
+            
             scenario_data = {
                 'grid_size': self.grid_size,
                 'spacing': self.spacing,
@@ -2227,7 +2157,7 @@ class WarehouseVisualizer(QMainWindow):
                 'nodes': []
             }
 
-            # Save node data
+            
             for y in range(self.grid_size):
                 for x in range(self.grid_size):
                     node = self.grid[y][x]
@@ -2242,38 +2172,38 @@ class WarehouseVisualizer(QMainWindow):
                     }
                     scenario_data['nodes'].append(node_data)
 
-            # Save the scenario data to a JSON file
+            
             json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
             with open(json_file, 'w') as f:
                 json.dump(scenario_data, f)
 
-            # Generate and save warehouse data CSV
+            
             if hasattr(self, 'item_nodes'):
                 warehouse_data = []
                 for node_info in self.item_nodes:
                     node = node_info['node']
-                    aisle_shelf_loc = node.name.split('_')  # Split "Aisle_1_Shelf_2_A" format
+                    aisle_shelf_loc = node.name.split('_')  
                     if len(aisle_shelf_loc) >= 5:
                         warehouse_data.append({
                             'Aisle_Number': f"{aisle_shelf_loc[0]}_{aisle_shelf_loc[1]}",
                             'Shelf_Number': f"{aisle_shelf_loc[2]}_{aisle_shelf_loc[3]}",
                             'Shelf_Location': aisle_shelf_loc[4],
                             'Item': node_info['item'],
-                            'Quantity': random.randint(1, 100),  # Maintain random quantity
+                            'Quantity': random.randint(1, 100),  
                             'Is_Shelf_Empty': False
                         })
 
-                # Save warehouse data to CSV
+                
                 csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
                 df_warehouse = pd.DataFrame(warehouse_data)
                 df_warehouse.to_csv(csv_file, index=False)
 
-            # Update the load dropdown
+            
             self.load_scenarios()
             QMessageBox.information(self, "Scenario Saved", f"Scenario '{scenario_name}' saved successfully.")
 
     def get_node_position(self, node):
-        """Get the grid coordinates of a node."""
+        
         if node:
             x = int(node.pos().x() // self.node_size)
             y = int(node.pos().y() // self.node_size)
@@ -2281,7 +2211,7 @@ class WarehouseVisualizer(QMainWindow):
         return None
 
     def load_scenario(self):
-        """Load the selected scenario from the dropdown."""
+        
         scenario_name = self.load_dropdown.currentText()
         if scenario_name == "Select Scenario":
             return
@@ -2293,31 +2223,31 @@ class WarehouseVisualizer(QMainWindow):
             QMessageBox.warning(self, "Error", f"Scenario file '{scenario_name}' not found.")
             return
 
-        # Load JSON scenario data
+        
         with open(json_file, 'r') as f:
             scenario_data = json.load(f)
 
-        # Load the scenario data
+        
         self.grid_size = scenario_data['grid_size']
         self.spacing = scenario_data['spacing']
         self.num_aisles = scenario_data['num_aisles']
         self.max_shelves_per_aisle = scenario_data['max_shelves_per_aisle']
 
-        # Update UI elements
+        
         self.spacing_dropdown.setCurrentText(str(self.spacing))
         self.aisle_spinbox.setValue(self.num_aisles)
         self.shelf_spinbox.setValue(self.max_shelves_per_aisle)
         self.layout_dropdown.setCurrentText(scenario_data['layout_type'])
 
-        # Clear item dropdown and nodes
+        
         self.item_dropdown.clear()
         self.item_dropdown.addItem("Select Item")
         self.item_nodes = []
 
-        # Reinitialize the grid
+        
         self.init_grid()
 
-        # Set nodes and their properties
+        
         for node_data in scenario_data['nodes']:
             x = node_data['x']
             y = node_data['y']
@@ -2328,11 +2258,11 @@ class WarehouseVisualizer(QMainWindow):
             color = QColor(node_data['color'])
             node.setBrush(QBrush(color))
 
-            # Set item label if it exists
+            
             if node_data.get('item_label'):
                 node.set_item_label(node_data['item_label'])
 
-        # Load warehouse data from CSV if it exists
+        
         if os.path.exists(csv_file):
             warehouse_df = pd.read_csv(csv_file)
             for _, row in warehouse_df.iterrows():
@@ -2342,12 +2272,12 @@ class WarehouseVisualizer(QMainWindow):
                     shelf_num = int(row['Shelf_Number'].split('_')[1])
                     shelf_loc = row['Shelf_Location']
 
-                    # Add item to dropdown
+                    
                     self.item_dropdown.addItem(
                         f"{item} (Aisle {aisle_num}, Shelf {shelf_num}, Location {shelf_loc})"
                     )
 
-                    # Find corresponding node and add to item_nodes
+                    
                     for node in [n for row in self.grid for n in row]:
                         if (node.name == f"Aisle_{aisle_num}_Shelf_{shelf_num}_{shelf_loc}"):
                             node_info = {
@@ -2359,7 +2289,7 @@ class WarehouseVisualizer(QMainWindow):
                             self.item_nodes.append(node_info)
                             break
 
-        # Set start and end nodes
+        
         self.start_node = None
         self.end_node = None
 
@@ -2379,34 +2309,26 @@ class WarehouseVisualizer(QMainWindow):
         QMessageBox.information(self, "Scenario Loaded", f"Scenario '{scenario_name}' loaded successfully.")
 
     def load_scenarios(self):
-        """Load the list of saved scenarios into the dropdown."""
-        self.load_dropdown.blockSignals(True)  # Temporarily block signals to prevent triggering load_scenario
+        
+        self.load_dropdown.blockSignals(True)  
 
         self.load_dropdown.clear()
-        self.load_dropdown.addItem("Select Scenario")  # Default placeholder
+        self.load_dropdown.addItem("Select Scenario")  
 
         scenario_files = [f for f in os.listdir(self.scenario_dir) if f.endswith('.json')]
         scenario_names = [os.path.splitext(f)[0] for f in scenario_files]
 
         self.load_dropdown.addItems(scenario_names)
 
-        self.load_dropdown.blockSignals(False)  # Re-enable signals
+        self.load_dropdown.blockSignals(False)  
 
     def process_benchmark_data(self, benchmark_data):
-        """
-        Process the collected benchmark data to compute average metrics per algorithm.
-
-        Parameters:
-            benchmark_data (dict): The raw benchmark data collected from runs.
-
-        Returns:
-            dict: A dictionary containing averaged metrics per algorithm.
-        """
-        # Initialize a dictionary to accumulate metrics
+        
+        
         accumulated_metrics = {}
 
-        for run in benchmark_data['runs']:  # Access the 'runs' list directly
-            algorithm = run['algorithm']  # Get the algorithm name
+        for run in benchmark_data['runs']:  
+            algorithm = run['algorithm']  
             if algorithm not in accumulated_metrics:
                 accumulated_metrics[algorithm] = {
                     'total_path_length': 0,
@@ -2414,14 +2336,14 @@ class WarehouseVisualizer(QMainWindow):
                     'total_time_taken': 0,
                     'valid_runs': 0
                 }
-            # Access the metrics directly from the run dictionary
+            
             if run['avg_path_length'] is not None:
                 accumulated_metrics[algorithm]['total_path_length'] += run['avg_path_length']
                 accumulated_metrics[algorithm]['total_nodes_searched'] += run['avg_nodes_searched']
                 accumulated_metrics[algorithm]['total_time_taken'] += run['avg_time_taken']
                 accumulated_metrics[algorithm]['valid_runs'] += 1
 
-        # Calculate averages
+        
         averaged_metrics = {}
         for algorithm, data in accumulated_metrics.items():
             if data['valid_runs'] > 0:
@@ -2440,7 +2362,7 @@ class WarehouseVisualizer(QMainWindow):
         return averaged_metrics
 
     def display_benchmark_results(self, averaged_metrics, movement_type=""):
-        """Display benchmark results with movement type specification."""
+        
         results_str = f"Benchmark Results ({movement_type}):\n"
 
         for algorithm, metrics in averaged_metrics.items():
@@ -2450,7 +2372,7 @@ class WarehouseVisualizer(QMainWindow):
                 results_str += f"  - Average Nodes Searched: {metrics['avg_nodes_searched']:.2f}\n"
                 results_str += f"  - Average Time Taken: {metrics['avg_time_taken']:.4f} seconds\n"
 
-                # Add Johnson's specific metrics if available
+                
                 if 'avg_mandatory_visits' in metrics and metrics['avg_mandatory_visits'] is not None:
                     results_str += f"  - Average Mandatory Visits: {metrics['avg_mandatory_visits']:.2f}\n"
                 if 'avg_pathfinding_visits' in metrics and metrics['avg_pathfinding_visits'] is not None:
@@ -2458,13 +2380,13 @@ class WarehouseVisualizer(QMainWindow):
             else:
                 results_str += "  - No valid paths found.\n"
 
-        # Show results in a message box
+        
         QMessageBox.information(self, f"Benchmark Results - {movement_type}", results_str)
-        print(results_str)  # Also print to console for debugging
+        print(results_str)  
 
     def save_benchmark_results(self, metrics_per_algorithm):
-        """Save the benchmark results to a JSON file."""
-        # Save the benchmark results in a JSON file
+        
+        
         filename = os.path.join(self.scenario_dir, "benchmark_results.json")
         with open(filename, 'w') as f:
             json.dump(metrics_per_algorithm, f, indent=4)
@@ -2472,8 +2394,8 @@ class WarehouseVisualizer(QMainWindow):
         QMessageBox.information(self, "Benchmark Saved", f"Benchmark results saved to {filename}")
 
     def plot_benchmark_results(self, averaged_metrics, num_runs, movement_type):
-        """Plot benchmark results with movement type specification."""
-        # Create plots directory if it doesn't exist
+        
+        
         plots_dir = os.path.join(self.scenario_dir, "benchmark_plots")
         if not os.path.exists(plots_dir):
             os.makedirs(plots_dir)
@@ -2482,7 +2404,7 @@ class WarehouseVisualizer(QMainWindow):
         graph_size = f"{self.grid_size}x{self.grid_size}"
         layout_type = self.layout_dropdown.currentText().replace(" ", "_")
 
-        # Extract data for plotting
+        
         algorithms = list(averaged_metrics.keys())
         avg_path_length = []
         avg_nodes_searched = []
@@ -2494,7 +2416,7 @@ class WarehouseVisualizer(QMainWindow):
             avg_nodes_searched.append(metrics['avg_nodes_searched'] if metrics['avg_nodes_searched'] is not None else 0)
             avg_time_taken.append(metrics['avg_time_taken'] if metrics['avg_time_taken'] is not None else 0)
 
-        # Define plot configurations
+        
         plot_configs = [
             {
                 'data': avg_path_length,
@@ -2519,7 +2441,7 @@ class WarehouseVisualizer(QMainWindow):
             }
         ]
 
-        # Generate and save each plot
+        
         for config in plot_configs:
             plt.figure(figsize=(12, 6))
             bars = plt.bar(algorithms, config['data'], color=config['color'])
@@ -2530,7 +2452,7 @@ class WarehouseVisualizer(QMainWindow):
             plt.yticks(fontsize=10)
             plt.tight_layout()
 
-            # Add value labels on top of each bar
+            
             for bar in bars:
                 height = bar.get_height()
                 if height is not None:
@@ -2544,12 +2466,12 @@ class WarehouseVisualizer(QMainWindow):
                         fontsize=10
                     )
 
-            # Save the plot
+            
             plot_path = os.path.join(plots_dir, config['filename'])
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
             plt.close()
 
-        # Inform the user
+        
         QMessageBox.information(
             self,
             "Benchmark Plots Saved",
@@ -2558,8 +2480,8 @@ class WarehouseVisualizer(QMainWindow):
         print(f"Benchmark plots for {movement_type} saved in {plots_dir}")
 
     def run_random_benchmarks(self):
-        """Run benchmarks with both orthogonal and diagonal movement, using the same graph for each run."""
-        # First check if benchmarking parameters are set
+        
+        
         num_runs = self.benchmark_spinbox.value()
         if num_runs < 1:
             QMessageBox.warning(self, "Invalid Number of Runs", "Please select at least one benchmark run.")
@@ -2567,7 +2489,7 @@ class WarehouseVisualizer(QMainWindow):
 
         has_negative = self.has_negative_weights()
 
-        # Determine which algorithms to test based on presence of negative weights
+        
         if has_negative:
             algorithms_to_test = [algo for algo, caps in self.algorithm_capabilities.items()
                                   if caps["handles_negative"]]
@@ -2586,7 +2508,7 @@ class WarehouseVisualizer(QMainWindow):
         else:
             algorithms_to_test = list(self.algorithm_capabilities.keys())
 
-        # Determine target nodes
+        
         if self.all_nodes_checkbox.isChecked():
             target_nodes = [
                 node for row in self.grid for node in row
@@ -2601,7 +2523,7 @@ class WarehouseVisualizer(QMainWindow):
 
         use_fixed_start = self.use_start_as_benchmark_start_checkbox.isChecked()
 
-        # Initialize benchmark data structure for both movement types
+        
         benchmark_data = {
             'orthogonal': {
                 'num_runs': num_runs,
@@ -2617,19 +2539,19 @@ class WarehouseVisualizer(QMainWindow):
             }
         }
 
-        # Disable UI during benchmarking
+        
         self.set_ui_enabled(False)
 
-        # Run benchmarks for each run
+        
         for run in range(1, num_runs + 1):
-            # Generate a unique filename for the warehouse layout
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             warehouse_filename = os.path.join(
                 self.scenario_dir,
                 f"benchmark_run_{run}_{timestamp}_warehouse.csv"
             )
 
-            # Generate a new warehouse layout
+            
             selected_layout = self.layout_dropdown.currentText()
             if selected_layout == "Vertical Aisles":
                 orientation = 'vertical'
@@ -2638,12 +2560,12 @@ class WarehouseVisualizer(QMainWindow):
             elif selected_layout == "Mixed Aisles":
                 orientation = 'mixed'
             else:
-                orientation = 'vertical'  # Default to vertical
+                orientation = 'vertical'  
 
-            # Generate and set the new warehouse layout
+            
             self.generate_warehouse_layout(orientation=orientation, unique_filename=warehouse_filename)
 
-            # After generating the layout, select the start node
+            
             if use_fixed_start:
                 if not self.start_node:
                     QMessageBox.warning(self, "Error", "Start node is not set.")
@@ -2661,15 +2583,15 @@ class WarehouseVisualizer(QMainWindow):
                     return
                 start_node = random.choice(traversable_nodes)
 
-            # Determine end node(s)
+            
             if self.all_nodes_checkbox.isChecked():
-                # Benchmark against all traversable nodes except start
+                
                 current_target_nodes = [
                     node for row in self.grid for node in row
                     if not node.is_obstacle and node != start_node
                 ]
             else:
-                # Benchmark against item nodes
+                
                 current_target_nodes = [node_info['node'] for node_info in self.item_nodes]
 
             if not current_target_nodes:
@@ -2681,12 +2603,12 @@ class WarehouseVisualizer(QMainWindow):
                 diagonal_enabled = (movement_type == 'diagonal')
                 movement_mode = 'Orthogonal Movement' if not diagonal_enabled else 'Diagonal Movement'
 
-                # Initialize run metrics for this movement type
+                
                 run_metrics = {}
 
-                # For each target node, run the benchmark
+                
                 for end_node in current_target_nodes:
-                    # Set the start and end nodes
+                    
                     self.set_start_node(start_node)
                     self.set_end_node(end_node)
 
@@ -2695,11 +2617,11 @@ class WarehouseVisualizer(QMainWindow):
                     )
                     QApplication.processEvents()
 
-                    # Run benchmarking with specified movement type and algorithms
+                    
                     single_run_metrics = self.benchmark_single_run(start_node, end_node, diagonal_enabled,
                                                                    algorithms_to_test)
 
-                    # Accumulate metrics
+                    
                     for algorithm, metrics in single_run_metrics.items():
                         if algorithm not in run_metrics:
                             run_metrics[algorithm] = {
@@ -2714,7 +2636,7 @@ class WarehouseVisualizer(QMainWindow):
                             run_metrics[algorithm]['time_taken'] += metrics['time_taken']
                             run_metrics[algorithm]['valid_runs'] += 1
 
-                # After all target nodes for this movement type, store the metrics
+                
                 for algorithm, metrics in run_metrics.items():
                     if metrics['valid_runs'] > 0:
                         avg_path_length = metrics['path_length'] / metrics['valid_runs']
@@ -2733,7 +2655,7 @@ class WarehouseVisualizer(QMainWindow):
                         'avg_time_taken': avg_time_taken
                     })
 
-        # Save results
+        
         output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
         result_dir = os.path.join(self.scenario_dir, "result_plots")
         if not os.path.exists(result_dir):
@@ -2748,7 +2670,7 @@ class WarehouseVisualizer(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to save benchmark results:\n{e}")
 
-        # Process and display results for both movement types
+        
         for movement_type in ['orthogonal', 'diagonal']:
             averaged_metrics = self.process_benchmark_data(benchmark_data[movement_type])
             self.display_benchmark_results(averaged_metrics, movement_type)
@@ -2758,7 +2680,7 @@ class WarehouseVisualizer(QMainWindow):
                 f"{movement_type.capitalize()} Movement"
             )
 
-        # Re-enable UI
+        
         self.set_ui_enabled(True)
 
         QMessageBox.information(
@@ -2768,18 +2690,7 @@ class WarehouseVisualizer(QMainWindow):
         )
 
     def benchmark_single_run(self, start_node, end_node, diagonal_enabled=False, algorithms_to_test=None):
-        """
-        Perform a single benchmark run from start_node to end_node.
-
-        Parameters:
-            start_node (Node): The starting node for pathfinding.
-            end_node (Node): The ending node for pathfinding.
-            diagonal_enabled (bool): Whether diagonal movement is allowed.
-            algorithms_to_test (list): List of algorithms to benchmark.
-
-        Returns:
-            dict: Metrics for each algorithm.
-        """
+        
         self.reset_grid()
 
         if not start_node or not end_node:
@@ -2855,7 +2766,7 @@ class WarehouseVisualizer(QMainWindow):
         return metrics_per_algorithm
 
     def display_benchmark_results(self, averaged_metrics, movement_type=""):
-        """Display benchmark results with movement type specification."""
+        
         results_str = f"Benchmark Results ({movement_type}):\n"
 
         for algorithm, metrics in averaged_metrics.items():
@@ -2932,23 +2843,23 @@ class WarehouseVisualizer(QMainWindow):
         self.set_ui_enabled(False)
         print("UI elements disabled for Show All Paths operation")
 
-        # Initialize a list of target nodes
+        
         self.all_target_nodes_copy = self.all_target_nodes.copy()
         self.current_target_index = 0
         print(f"Starting visualization of {len(self.all_target_nodes_copy)} paths")
 
-        # Initialize a timer to handle path visualization sequentially
+        
         self.all_paths_timer = QTimer(self)
         self.all_paths_timer.timeout.connect(self.visualize_next_path)
-        self.all_paths_timer.start(10)  # 100 ms delay between paths
+        self.all_paths_timer.start(10)  
 
-        # Optionally, reset any existing paths before starting
+        
         self.reset_grid()
         print("Grid reset for path visualization")
 
 
     def set_ui_enabled(self, enabled):
-        """Enable or disable UI elements during bulk operations."""
+        
         self.spacing_dropdown.setEnabled(enabled)
         self.algorithm_dropdown.setEnabled(enabled)
         self.layout_dropdown.setEnabled(enabled)
@@ -2966,7 +2877,6 @@ class WarehouseVisualizer(QMainWindow):
         self.item_dropdown.setEnabled(enabled)
         self.zoom_in_button.setEnabled(enabled)
         self.zoom_out_button.setEnabled(enabled)
-        # self.benchmark_button.setEnabled(enabled)  # Removed
         self.show_all_paths_button.setEnabled(enabled)
 
 
