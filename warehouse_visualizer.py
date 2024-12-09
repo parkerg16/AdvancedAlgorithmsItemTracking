@@ -2245,7 +2245,13 @@ class WarehouseVisualizer(QMainWindow):
                     scenario_data['nodes'].append(node_data)
 
             # Save the scenario data to a JSON file
-            json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
+            json_filename = f"{scenario_name}.json"
+            save_dir = os.path.join(self.scenario_dir, "saved_scenarios")
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+            json_file = os.path.join(save_dir, json_filename)
+            
             with open(json_file, 'w') as f:
                 json.dump(scenario_data, f)
 
@@ -2266,7 +2272,11 @@ class WarehouseVisualizer(QMainWindow):
                         })
 
                 # Save warehouse data to CSV
-                csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
+                warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
+                if not os.path.exists(warehouse_csv_dir):
+                    os.makedirs(warehouse_csv_dir)
+                
+                csv_file = os.path.join(warehouse_csv_dir, f"{scenario_name}_warehouse.csv")
                 df_warehouse = pd.DataFrame(warehouse_data)
                 df_warehouse.to_csv(csv_file, index=False)
 
@@ -2288,8 +2298,16 @@ class WarehouseVisualizer(QMainWindow):
         if scenario_name == "Select Scenario":
             return
 
-        json_file = os.path.join(self.scenario_dir, f"{scenario_name}.json")
-        csv_file = os.path.join(self.scenario_dir, f"{scenario_name}_warehouse.csv")
+        saved_scenario_dir = os.path.join(self.scenario_dir, "saved_scenarios")
+        if not os.path.exists(saved_scenario_dir):
+            os.makedirs(saved_scenario_dir)
+        
+        warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
+        if not os.path.exists(warehouse_csv_dir):
+            os.makedirs(warehouse_csv_dir)
+        
+        json_file = os.path.join(saved_scenario_dir, f"{scenario_name}.json")
+        csv_file = os.path.join(warehouse_csv_dir, f"{scenario_name}_warehouse.csv")
 
         if not os.path.exists(json_file):
             QMessageBox.warning(self, "Error", f"Scenario file '{scenario_name}' not found.")
@@ -2387,7 +2405,10 @@ class WarehouseVisualizer(QMainWindow):
         self.load_dropdown.clear()
         self.load_dropdown.addItem("Select Scenario")  # Default placeholder
 
-        scenario_files = [f for f in os.listdir(self.scenario_dir) if f.endswith('.json')]
+        saved_scenarios_dir = os.path.join(self.scenario_dir, "saved_scenarios")
+        if not os.path.exists(saved_scenarios_dir):
+            os.makedirs(saved_scenarios_dir)
+        scenario_files = [f for f in os.listdir(saved_scenarios_dir) if f.endswith('.json')]
         scenario_names = [os.path.splitext(f)[0] for f in scenario_files]
 
         self.load_dropdown.addItems(scenario_names)
@@ -2626,8 +2647,11 @@ class WarehouseVisualizer(QMainWindow):
         for run in range(1, num_runs + 1):
             # Generate a unique filename for the warehouse layout
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            warehouse_csv_dir = os.path.join(self.scenario_dir, "warehouse_csv_data")
+            if not os.path.exists(warehouse_csv_dir):
+                os.makedirs(warehouse_csv_dir)
             warehouse_filename = os.path.join(
-                self.scenario_dir,
+                warehouse_csv_dir,
                 f"benchmark_run_{run}_{timestamp}_warehouse.csv"
             )
 
@@ -2737,7 +2761,7 @@ class WarehouseVisualizer(QMainWindow):
 
         # Save results
         output_filename = f"random_benchmarks_{num_runs}_runs_{benchmark_data['orthogonal']['timestamp']}.json"
-        result_dir = os.path.join(self.scenario_dir, "result_plots")
+        result_dir = os.path.join(self.scenario_dir, "benchmark_results")
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)
 

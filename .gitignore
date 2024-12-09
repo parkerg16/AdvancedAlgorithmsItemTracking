@@ -1,4 +1,8 @@
 venv
 benchmark_plots
+benchmark_results
+warehouse_csv_data
 result_plots
 warehouse_layout.csv
+saved_scenarios
+.idea
