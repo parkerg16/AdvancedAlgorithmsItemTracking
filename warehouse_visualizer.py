@@ -76,7 +76,6 @@ class Node(QGraphicsRectItem):
         self.is_aisle = False
         self.last_scroll_time = time.time()
         self.original_aisle_color = None
-
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsFocusable)
 
 
@@ -490,7 +489,7 @@ class WarehouseVisualizer(QMainWindow):
         self.diagonal_checkbox.stateChanged.connect(self.handle_diagonal_change)
 
         self.use_start_as_benchmark_start_checkbox = QCheckBox("Use Start Node for Benchmarks", self)
-        self.use_start_as_benchmark_start_checkbox.setChecked(True)  
+        self.use_start_as_benchmark_start_checkbox.setChecked(False)
 
 
         self.all_nodes_checkbox = QCheckBox("Benchmark Against All Nodes", self)
